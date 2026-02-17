@@ -40,13 +40,22 @@ export const SplashScreen: React.FC<Props> = ({ onComplete }) => {
         </div>
 
         {/* Text */}
-        <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white via-[#e879f9] to-[#22d3ee] mb-4 animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-300 drop-shadow-[0_0_15px_rgba(217,70,239,0.3)]">
+        <h1 className="text-5xl md:text-6xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-white via-[#e879f9] to-[#22d3ee] mb-2 animate-in slide-in-from-bottom-4 fade-in duration-1000 delay-300 drop-shadow-[0_0_15px_rgba(217,70,239,0.3)]">
           HARMONIX
         </h1>
         
-        <p className="text-lg md:text-xl text-gray-300 tracking-[0.5em] uppercase font-light animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-700">
+        <p className="text-lg md:text-xl text-gray-300 tracking-[0.5em] uppercase font-light animate-in fade-in slide-in-from-bottom-2 duration-1000 delay-700 mb-8">
           Feel The Beats
         </p>
+
+        {/* Music Visualizer Animation */}
+        <div className="flex items-end gap-1.5 h-12 animate-in fade-in zoom-in duration-1000 delay-500">
+            <div className="w-2 bg-[#22d3ee] rounded-full animate-music-bar" style={{ animationDelay: '0ms' }}></div>
+            <div className="w-2 bg-[#d946ef] rounded-full animate-music-bar" style={{ animationDelay: '200ms' }}></div>
+            <div className="w-2 bg-[#22d3ee] rounded-full animate-music-bar" style={{ animationDelay: '400ms' }}></div>
+            <div className="w-2 bg-[#d946ef] rounded-full animate-music-bar" style={{ animationDelay: '100ms' }}></div>
+            <div className="w-2 bg-[#22d3ee] rounded-full animate-music-bar" style={{ animationDelay: '300ms' }}></div>
+        </div>
       </div>
 
       {/* Footer */}
@@ -66,6 +75,13 @@ export const SplashScreen: React.FC<Props> = ({ onComplete }) => {
         }
         .animate-reverse-spin {
             animation: spin-slow linear infinite reverse;
+        }
+        @keyframes music-bar {
+            0%, 100% { height: 10px; opacity: 0.5; }
+            50% { height: 40px; opacity: 1; box-shadow: 0 0 15px currentColor; }
+        }
+        .animate-music-bar {
+            animation: music-bar 1.2s ease-in-out infinite;
         }
       `}</style>
     </div>

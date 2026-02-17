@@ -162,6 +162,10 @@ export const getHomeMixes = async (userProfile?: UserProfile) => {
     const categories = [
         { title: "Trending India", query: "Top 50 India", lang: 'Hindi' },
         { title: "Global Top 50", query: "Global Top 50", lang: 'English' },
+        { title: "French Pop Hits", query: "Top 50 French Songs", lang: 'French' },
+        { title: "Latino Gang", query: "Top 50 Spanish", lang: 'Spanish' },
+        { title: "Paris Vibes", query: "French Chanson", lang: 'French' },
+        { title: "Reggaeton Heat", query: "Best Reggaeton 2024", lang: 'Spanish' },
         { title: "K-Pop World", query: "K-Pop Top 50", lang: 'Korean (K-Pop)' }, 
         { title: "Anime & J-Pop", query: "Anime Opening Songs", lang: 'Japanese (J-Pop/Anime)' },
         { title: "New Hindi Releases", query: "New Hindi Songs", lang: 'Hindi' },
@@ -247,7 +251,9 @@ const DISCOVERY_QUERIES = [
     "Punjabi Party Anthems", "Romantic Hits 2024", "Top English Pop",
     "Imagine Dragons", "Coldplay", "A.R. Rahman Magic", "Retro 90s India",
     "Garba Hits", "Tollywood Mass Beats", "Sufi Nights",
-    "K-Pop New Releases", "Japanese City Pop", "Studio Ghibli LoFi", "Blackpink Solo", "NewJeans", "Twice Hits"
+    "K-Pop New Releases", "Japanese City Pop", "Studio Ghibli LoFi", "Blackpink Solo", "NewJeans", "Twice Hits",
+    "Top French Songs", "French Indie Pop", "Stromae Hits", "Indila Best Songs",
+    "Bad Bunny Hits", "Rosalia Songs", "Reggaeton 2024", "Latin Pop Hits"
 ];
 
 export const getDiscoverMix = async (userProfile?: UserProfile) => {

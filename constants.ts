@@ -45,9 +45,9 @@ export const GENRES = [
 ];
 
 export const LANGUAGES = [
-    'Hindi', 'English', 'Punjabi', 'Korean (K-Pop)', 'Japanese (J-Pop/Anime)', 'Tamil', 'Telugu', 'Malayalam', 'Kannada', 'Marathi', 'Gujarati', 'Bengali', 'Bhojpuri', 'Haryanvi', 'Spanish'
+    'Hindi', 'English', 'Punjabi', 'Korean (K-Pop)', 'Japanese (J-Pop/Anime)', 'Tamil', 'Telugu', 'Malayalam', 'Kannada', 'Marathi', 'Gujarati', 'Bengali', 'Bhojpuri', 'Haryanvi', 'Spanish', 'French'
 ];
 
 export const POPULAR_ARTISTS = [
-    'Arijit Singh', 'BTS', 'Taylor Swift', 'The Weeknd', 'Drake', 'Diljit Dosanjh', 'Blackpink', 'Sidhu Moose Wala', 'Shreya Ghoshal', 'Badshah', 'Justin Bieber', 'Eminem', 'A.R. Rahman', 'Anirudh Ravichander', 'Pritam', 'Atif Aslam', 'Post Malone', 'Imagine Dragons', 'NewJeans', 'Twice'
+    'Arijit Singh', 'BTS', 'Taylor Swift', 'The Weeknd', 'Drake', 'Diljit Dosanjh', 'Blackpink', 'Sidhu Moose Wala', 'Shreya Ghoshal', 'Badshah', 'Justin Bieber', 'Eminem', 'A.R. Rahman', 'Anirudh Ravichander', 'Pritam', 'Atif Aslam', 'Post Malone', 'Imagine Dragons', 'NewJeans', 'Twice', 'Rosalía', 'Bad Bunny', 'Stromae', 'Indila'
 ];
