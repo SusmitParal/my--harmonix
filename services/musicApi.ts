@@ -2,6 +2,7 @@ import { Song, UserProfile } from '../types';
 import { DEMO_TRACK_URL } from '../constants';
 
 // List of available public JioSaavn API instances
+// Ordered by reliability and trust to prevent browser security warnings
 const SAAVN_API_ENDPOINTS = [
     'https://saavn.dev/api',
     'https://jiosaavn-api-privatecvc2.vercel.app',
