@@ -1,3 +1,5 @@
+import React from 'react';
+import ReactDOM from 'react-dom/client';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
@@ -1063,3 +1065,11 @@ function App() {
 }
 
 export default App;
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  ReactDOM.createRoot(rootElement).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
