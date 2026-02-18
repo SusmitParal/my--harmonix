@@ -1,3 +1,4 @@
+
 import { Song, UserProfile } from '../types';
 import { DEMO_TRACK_URL } from '../constants';
 
@@ -27,7 +28,8 @@ async function fetchFromSaavnFastest(path: string): Promise<any> {
     const requests = SAAVN_API_ENDPOINTS.map(baseUrl => {
         return new Promise(async (resolve, reject) => {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 6000); 
+            // Reduced timeout to 3.5s for faster UI response if API hangs
+            const timeoutId = setTimeout(() => controller.abort(), 3500); 
             try {
                 const res = await fetch(`${baseUrl}${path}`, { signal: controller.signal });
                 clearTimeout(timeoutId);
@@ -115,6 +117,7 @@ async function fetchFromItunes(query: string, limit = 10): Promise<Song[]> {
             quality: 'Preview (iTunes)'
         }));
     } catch (e) {
+        // Ultimate Fallback to avoid empty screens
         return [getFallbackSong(query)];
     }
 }
@@ -152,18 +155,13 @@ export const getHomeMixes = async (userProfile?: UserProfile) => {
         { title: "Global Top 50", query: "Global Top 50", lang: 'English' },
         { title: "French Pop Hits", query: "Top 50 French Songs", lang: 'French' },
         { title: "Latino Gang", query: "Top 50 Spanish", lang: 'Spanish' },
-        { title: "Paris Vibes", query: "French Chanson", lang: 'French' },
-        { title: "Reggaeton Heat", query: "Best Reggaeton 2024", lang: 'Spanish' },
         { title: "New Hindi Releases", query: "New Hindi Songs", lang: 'Hindi' },
-        { title: "Punjabi Swag", query: "Top 50 Punjabi", lang: 'Punjabi' },
-        { title: "Tamil Hits", query: "Top 50 Tamil", lang: 'Tamil' },
-        { title: "Telugu Top 50", query: "Top 50 Telugu", lang: 'Telugu' }
+        { title: "Punjabi Swag", query: "Top 50 Punjabi", lang: 'Punjabi' }
     ];
 
     let finalCategories = [...categories];
 
     if (userProfile && userProfile.languages.length > 0) {
-        // Prioritize language-based mixes instead of artist-based
         const languageMixes = userProfile.languages.map(lang => {
             const cleanLang = lang.split('(')[0].trim();
             return {
@@ -173,11 +171,11 @@ export const getHomeMixes = async (userProfile?: UserProfile) => {
             };
         });
         
-        // Add language mixes to the start
         finalCategories = [...languageMixes, ...finalCategories];
     }
 
-    const mixesToFetch = finalCategories.slice(0, 8); 
+    // Reduce initial load to 4 categories for faster startup
+    const mixesToFetch = finalCategories.slice(0, 4); 
 
     try {
         const results = await Promise.allSettled(mixesToFetch.map(async (cat) => {
@@ -208,21 +206,17 @@ export const searchTracks = async (query: string): Promise<Song[]> => {
 
 const DISCOVERY_QUERIES = [
     "Trending Reels 2024", "Viral Hits India", "Arijit Singh Latest", 
-    "Sidhu Moose Wala", "Diljit Dosanjh", "Old Bollywood Classics", 
-    "K-Pop Hot 100", "Drake Hits", "The Weeknd", "LoFi Study Beats",
-    "Top French Songs", "Bad Bunny Hits"
+    "Sidhu Moose Wala", "Diljit Dosanjh", "K-Pop Hot 100", "Drake Hits"
 ];
 
 export const getDiscoverMix = async (userProfile?: UserProfile) => {
     let query = "";
     if (userProfile && Math.random() > 0.3) { 
-        // Prioritize Language Discovery over Artist Discovery
         if (userProfile.languages.length > 0) {
              const lang = userProfile.languages[Math.floor(Math.random() * userProfile.languages.length)];
              const simpleLang = lang.split('(')[0].trim();
              query = `Trending ${simpleLang} songs`;
         } else if (userProfile.artists.length > 0) {
-            // Fallback to artists only if no languages
             const artist = userProfile.artists[Math.floor(Math.random() * userProfile.artists.length)];
             query = `${artist} radio`;
         }

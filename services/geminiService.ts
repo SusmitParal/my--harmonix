@@ -1,8 +1,10 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+
+import { GoogleGenAI, Type } from "@google/genai";
 import { Song, Playlist, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
-const genAI = new GoogleGenerativeAI(process.env.VITE_GEMINI_API_KEY || '');
+// Initialize the client with the correct API Key parameter object
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateLyrics = async (song: string, artist: string): Promise<string> => {
   if (!process.env.API_KEY) return "Lyrics unavailable (API Key missing).";
@@ -187,7 +189,6 @@ export const generateRecommendations = async (context: string): Promise<Song[]> 
 };
 
 export const searchMusic = async (query: string): Promise<Song[]> => {
-   // Re-using musicAPI instead for real search, this was Gemini mock
    return generateMockSongs();
 }
 
