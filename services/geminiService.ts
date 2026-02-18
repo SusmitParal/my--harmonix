@@ -1,13 +1,13 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, Type } from "@google/generative-ai";
 import { Song, Playlist, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
 // Initialize the client with the correct API Key parameter object
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenerativeAI({ apiKey: process.env.VITE_GEMINI_API_KEY });
 
 export const generateLyrics = async (song: string, artist: string): Promise<string> => {
-  if (!process.env.API_KEY) return "Lyrics unavailable (API Key missing).";
+  if (!process.env.VITE_GEMINI_API_KEY) return "Lyrics unavailable (API Key missing).";
   
   try {
     const response = await ai.models.generateContent({
