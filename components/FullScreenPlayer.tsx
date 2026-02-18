@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   ChevronDown, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, 
-  Layers, Download, Mic2, ListMusic, MoreHorizontal, Clock, MonitorSpeaker, Sparkles, Loader2, RefreshCw, Repeat1
+  Layers, Download, Mic2, ListMusic, MoreHorizontal, Clock, MonitorSpeaker, Sparkles, Loader2, RefreshCw, Repeat1,
+  Headphones
 } from 'lucide-react';
 import { Song, SpatialMode, ArtistInfo, ShuffleMode, RepeatMode } from '../types';
 import { audioEngine } from '../services/audioEngine';
@@ -165,7 +167,7 @@ export const FullScreenPlayer: React.FC<Props> = ({
       <div className="flex-1 flex flex-col items-center justify-start px-8 pt-2 z-10 max-w-2xl mx-auto w-full relative">
         
         {/* Center Stage: Album Art OR Lyrics */}
-        <div className="w-full aspect-square max-w-sm mb-8 relative group perspective-1000">
+        <div className="w-full aspect-square max-w-sm mb-6 relative group perspective-1000">
           
           {!showLyrics ? (
             // ALBUM ART VIEW
@@ -176,6 +178,13 @@ export const FullScreenPlayer: React.FC<Props> = ({
                     alt={currentSong.title} 
                     className={`relative w-full h-full object-cover rounded-3xl shadow-2xl z-10 ${isPlaying ? 'scale-100' : 'scale-95'} transition-transform duration-700 ease-in-out border border-white/10`} 
                 />
+                
+                {/* 3D Audio Badge Overlay on Art */}
+                {spatialMode !== 'off' && (
+                    <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md text-[#22d3ee] text-xs font-bold px-3 py-1 rounded-full border border-[#22d3ee]/30 flex items-center gap-1 z-20 animate-pulse">
+                        <Headphones size={12} /> {spatialMode.toUpperCase()}
+                    </div>
+                )}
             </div>
           ) : (
             // LYRICS VIEW
@@ -187,7 +196,7 @@ export const FullScreenPlayer: React.FC<Props> = ({
         </div>
 
         {/* Title & Artist & Quick Actions */}
-        <div className="w-full flex justify-between items-center mb-6 px-1">
+        <div className="w-full flex justify-between items-center mb-4 px-1">
            <div className="flex-1 overflow-hidden mr-4">
              <h1 className="text-2xl md:text-3xl font-bold truncate mb-1 text-white drop-shadow-lg">{currentSong.title}</h1>
              <p className="text-lg text-[#22d3ee] truncate font-medium drop-shadow-[0_0_3px_#22d3ee]">{currentSong.artist}</p>
@@ -257,14 +266,21 @@ export const FullScreenPlayer: React.FC<Props> = ({
            </button>
         </div>
 
-        {/* Bottom Actions Row */}
-        <div className="flex items-center justify-around w-full border-t border-white/5 pt-4 pb-8">
+        {/* SPATIAL AUDIO & EXTRAS ROW */}
+        <div className="flex items-center justify-between w-full border-t border-white/5 pt-4 pb-8">
+            {/* ENHANCED SPATIAL TOGGLE */}
             <button 
                 onClick={cycleSpatial} 
-                className={`flex flex-col items-center gap-1.5 ${spatialMode !== 'off' ? 'text-[#22d3ee] drop-shadow-[0_0_5px_#22d3ee]' : 'text-gray-400 hover:text-white'} transition`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${
+                    spatialMode !== 'off' 
+                    ? 'bg-[#22d3ee]/10 border-[#22d3ee] text-[#22d3ee] shadow-[0_0_10px_rgba(34,211,238,0.3)]' 
+                    : 'bg-white/5 border-transparent text-gray-400 hover:text-white hover:bg-white/10'
+                }`}
             >
-               <Layers size={22} />
-               <span className="text-[10px] font-semibold tracking-wide">{spatialMode === 'off' ? 'STEREO' : spatialMode.toUpperCase()}</span>
+               <Layers size={18} />
+               <span className="text-xs font-bold tracking-widest">
+                   {spatialMode === 'off' ? '8D OFF' : spatialMode.toUpperCase()}
+               </span>
             </button>
             
              <button 
