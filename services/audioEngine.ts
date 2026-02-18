@@ -1,3 +1,4 @@
+
 import { SpatialMode, Song } from '../types';
 
 class AudioEngine {
@@ -90,7 +91,12 @@ class AudioEngine {
   }
 
   init() {
-    if (this.audioContext) return;
+    if (this.audioContext) {
+        if (this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+        return;
+    }
     
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     this.audioContext = new AudioContextClass();
@@ -201,9 +207,11 @@ class AudioEngine {
     this.audioElement.load();
   }
 
-  play() {
+  async play() {
     if (!this.audioContext) this.init();
-    this.audioContext?.resume();
+    if (this.audioContext?.state === 'suspended') {
+        await this.audioContext.resume();
+    }
     return this.audioElement.play();
   }
 
