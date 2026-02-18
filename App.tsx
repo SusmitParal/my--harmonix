@@ -1,4 +1,5 @@
-import React, { Component, useState, useEffect, useRef, ReactNode } from 'react';
+
+import React, { useState, useEffect, useRef, ReactNode } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
   Settings, User, Download, Menu, X, Bell, Moon, Sun, Users, Smartphone as PhoneIcon,
@@ -20,7 +21,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { Onboarding } from './components/Onboarding';
 
 // Bump version to force a cleanup of old corrupted localStorage data
-const APP_VERSION = '3.8.0';
+const APP_VERSION = '3.9.0';
 
 // --- Error Boundary Component ---
 interface ErrorBoundaryProps {
@@ -31,7 +32,7 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
