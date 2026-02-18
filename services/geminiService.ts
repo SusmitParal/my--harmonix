@@ -2,11 +2,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Song, Playlist, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateLyrics = async (song: string, artist: string): Promise<string> => {
-  if (!apiKey) return "Lyrics unavailable (API Key missing).";
+  if (!process.env.API_KEY) return "Lyrics unavailable (API Key missing).";
   
   try {
     const response = await ai.models.generateContent({
@@ -21,7 +20,7 @@ export const generateLyrics = async (song: string, artist: string): Promise<stri
 };
 
 export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promise<Song[]> => {
-    if (!apiKey || queue.length < 3) return queue.sort(() => Math.random() - 0.5);
+    if (!process.env.API_KEY || queue.length < 3) return queue.sort(() => Math.random() - 0.5);
 
     try {
         const songList = queue.map(s => `${s.title} - ${s.artist}`).join('\n');
@@ -65,8 +64,26 @@ export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promi
     }
 };
 
+export const generateVibeQuery = async (currentSong: Song, languages: string[]): Promise<string> => {
+    if (!process.env.API_KEY) return `${currentSong.artist} similar songs`;
+
+    try {
+        const langStr = languages.length > 0 ? languages.join(", ") : "Hindi, English";
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `I just finished listening to "${currentSong.title}" by "${currentSong.artist}". 
+            Suggest a VERY short search query (max 4 words) to find the next song that matches this mood/vibe (e.g. late night drive, party, sad, upbeat).
+            CRITICAL: The song MUST be in one of these languages: ${langStr}.
+            Return ONLY the search query string. Do not include quotes.`,
+        });
+        return response.text?.trim() || `${currentSong.artist} radio`;
+    } catch (e) {
+        return `${currentSong.artist} mix`;
+    }
+};
+
 export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
-  if (!apiKey) {
+  if (!process.env.API_KEY) {
       return { 
           name: artistName, 
           bio: "Bio unavailable in demo mode.", 
@@ -128,7 +145,7 @@ export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
 }
 
 export const generateRecommendations = async (context: string): Promise<Song[]> => {
-  if (!apiKey) return generateMockSongs();
+  if (!process.env.API_KEY) return generateMockSongs();
 
   try {
     const response = await ai.models.generateContent({

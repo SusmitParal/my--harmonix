@@ -34,7 +34,10 @@ export const FullScreenPlayer: React.FC<Props> = ({
 }) => {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [spatialMode, setSpatialMode] = useState<SpatialMode>('off');
+  
+  // Initialize spatial mode from the ENGINE's current state to ensure instant sync
+  const [spatialMode, setSpatialMode] = useState<SpatialMode>(audioEngine.getMode());
+  
   const [artistBio, setArtistBio] = useState<ArtistInfo | null>(null);
   const [showEq, setShowEq] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -67,6 +70,8 @@ export const FullScreenPlayer: React.FC<Props> = ({
     const modes: SpatialMode[] = ['off', '8d', '16d', '32d'];
     const nextIdx = (modes.indexOf(spatialMode) + 1) % modes.length;
     const nextMode = modes[nextIdx];
+    
+    // Apply IMMEDIATELY
     setSpatialMode(nextMode);
     audioEngine.setSpatialMode(nextMode);
   };

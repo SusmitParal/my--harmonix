@@ -1,16 +1,14 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
   Settings, User, Download, Menu, X, Bell, Moon, Sun, Users, Smartphone as PhoneIcon,
-  ListMusic, ListPlus, Trash2, Play, RefreshCw, LogOut
+  ListMusic, ListPlus, Trash2, Play, RefreshCw, LogOut, Music2, FolderHeart, Shuffle
 } from 'lucide-react';
 import { Song, Playlist, ViewState, SpatialMode, ShuffleMode, RepeatMode, UserProfile } from './types';
 import { DEMO_TRACK_URL, MOCK_PLAYLISTS, GENRES } from './constants';
 import { audioEngine } from './services/audioEngine';
 import { getHomeMixes, searchTracks, getDiscoverMix } from './services/musicApi';
-import { smartReorderQueue } from './services/geminiService';
+import { smartReorderQueue, generateVibeQuery } from './services/geminiService';
 
 import { PlayerBar } from './components/PlayerBar';
 import { FullScreenPlayer } from './components/FullScreenPlayer';
@@ -60,8 +58,7 @@ function App() {
   
   // Settings State
   const [defaultSpatial, setDefaultSpatial] = useState<SpatialMode>('off');
-  const [audioQuality, setAudioQuality] = useState('High');
-
+  
   // Play Together State
   const [connectedDevices, setConnectedDevices] = useState<string[]>([]);
   const [isScanning, setIsScanning] = useState(false);
@@ -74,13 +71,27 @@ function App() {
   // Playlist Modal State
   const [playlistModalSong, setPlaylistModalSong] = useState<Song | null>(null);
 
+  // Play Selection Modal (Shuffle vs Normal)
+  const [playSelection, setPlaySelection] = useState<{title: string, songs: Song[]} | null>(null);
+
   // Home Content
   const [homeMixes, setHomeMixes] = useState<{title: string, songs: Song[]}[]>([]);
   const sleepTimerRef = useRef<number | null>(null);
 
   // --- INITIALIZATION SEQUENCE ---
   
-  // 1. Load User Profile on Mount
+  // 1. Safety Timeout for Splash Screen (Fix for Purple Screen Hang)
+  useEffect(() => {
+      const safetyTimer = setTimeout(() => {
+          if (showSplash) {
+             console.warn("Splash screen timed out, forcing close.");
+             handleSplashComplete();
+          }
+      }, 8000); // 8 seconds max
+      return () => clearTimeout(safetyTimer);
+  }, [showSplash]);
+
+  // 2. Load User Profile on Mount
   useEffect(() => {
      const storedProfile = localStorage.getItem('harmonix_user_profile');
      if (storedProfile) {
@@ -88,7 +99,7 @@ function App() {
      }
   }, []);
 
-  // 2. Handle Splash Completion logic
+  // 3. Handle Splash Completion logic
   const handleSplashComplete = () => {
       setShowSplash(false);
       // If no profile, show onboarding
@@ -109,11 +120,15 @@ function App() {
   };
 
   const loadHomeMixes = async (profile: UserProfile | null) => {
-      const mixes = await getHomeMixes(profile || undefined);
-      setHomeMixes(mixes);
+      try {
+        const mixes = await getHomeMixes(profile || undefined);
+        setHomeMixes(mixes);
+      } catch (e) {
+          console.error("Failed to load mixes", e);
+      }
   };
 
-  // 3. Reset App Data (Simulate Reinstall)
+  // 4. Reset App Data (Simulate Reinstall)
   const resetApp = () => {
       if (confirm("Reset App? This will clear your profile and data, simulating a fresh install.")) {
           localStorage.clear();
@@ -157,13 +172,16 @@ function App() {
     const lastQueue = localStorage.getItem('omni_last_queue');
     const lastLiked = localStorage.getItem('omni_liked_songs');
     const lastHistory = localStorage.getItem('omni_history');
+    const lastPlaylists = localStorage.getItem('omni_playlists');
 
     if (lastLiked) {
         try { setLikedSongs(JSON.parse(lastLiked)); } catch {}
     }
-
     if(lastHistory) {
          try { setHistory(JSON.parse(lastHistory)); } catch {}
+    }
+    if (lastPlaylists) {
+         try { setPlaylists(JSON.parse(lastPlaylists)); } catch {}
     }
 
     if (lastSong) {
@@ -198,7 +216,8 @@ function App() {
           localStorage.setItem('omni_history', JSON.stringify(history));
       }
       localStorage.setItem('omni_liked_songs', JSON.stringify(likedSongs));
-  }, [currentSong, queue, likedSongs, history]);
+      localStorage.setItem('omni_playlists', JSON.stringify(playlists));
+  }, [currentSong, queue, likedSongs, history, playlists]);
 
   // 3. Save time periodically
   useEffect(() => {
@@ -260,12 +279,7 @@ function App() {
       const url = song.audioUrl || song.previewUrl || DEMO_TRACK_URL;
       await audioEngine.loadTrack(url);
       
-      // 3. Apply settings
-      if (defaultSpatial !== 'off') {
-          audioEngine.setSpatialMode(defaultSpatial);
-      }
-      
-      // 4. Play
+      // 3. Play
       try {
         await audioEngine.play();
         setIsPlaying(true);
@@ -281,13 +295,36 @@ function App() {
     await playSongInternal(song);
   };
 
-  // Helper to play a song and set the context queue
+  // Play Logic specifically for the modal options
+  const handleSmartPlay = (songs: Song[], mode: 'normal' | 'shuffle') => {
+    if (songs.length === 0) return;
+    
+    // Reset any previous queue
+    setQueue([]);
+    
+    if (mode === 'shuffle') {
+        const shuffled = [...songs].sort(() => Math.random() - 0.5);
+        setShuffleMode('normal');
+        setQueue(shuffled.slice(1));
+        setOriginalQueue(songs); // Keep original order for "Shuffle Off" logic
+        playSong(shuffled[0]);
+        showNotification("Playing Shuffled");
+    } else {
+        setShuffleMode('off');
+        setQueue(songs.slice(1));
+        setOriginalQueue(songs);
+        playSong(songs[0]);
+        showNotification("Playing Normal");
+    }
+  };
+
+  // Legacy helper - redirects to modal logic if needed or direct play
   const playFromList = async (song: Song, list: Song[]) => {
       const idx = list.findIndex(s => s.id === song.id);
       if (idx !== -1) {
           const nextSongs = list.slice(idx + 1);
           setQueue(nextSongs);
-          setOriginalQueue(list); // Important for repeat all / shuffle reset
+          setOriginalQueue(list); 
       }
       await playSong(song);
   };
@@ -303,7 +340,6 @@ function App() {
   };
 
   // --- Shuffle & Repeat Logic ---
-  
   const toggleShuffle = async () => {
       let newMode: ShuffleMode = 'off';
       if (shuffleMode === 'off') newMode = 'normal';
@@ -313,22 +349,13 @@ function App() {
       setShuffleMode(newMode);
       
       if (newMode === 'off') {
-          // Restore
-          if (originalQueue.length > 0) {
-              setQueue(originalQueue);
-          }
+          if (originalQueue.length > 0) setQueue(originalQueue);
           showNotification("Shuffle Off");
       } else if (newMode === 'normal') {
-          // Normal Random
-          if (originalQueue.length === 0 && queue.length > 0) setOriginalQueue([...queue]); // Save if not saved
-          
-          setQueue(prev => {
-              const shuffled = [...prev].sort(() => Math.random() - 0.5);
-              return shuffled;
-          });
+          if (originalQueue.length === 0 && queue.length > 0) setOriginalQueue([...queue]);
+          setQueue(prev => [...prev].sort(() => Math.random() - 0.5));
           showNotification("Shuffle On");
       } else if (newMode === 'ai') {
-          // AI Shuffle
           showNotification("AI Shuffle: Analyzing Vibe...");
           if (currentSong && queue.length > 0) {
               if (originalQueue.length === 0) setOriginalQueue([...queue]);
@@ -336,8 +363,8 @@ function App() {
               setQueue(sorted);
               showNotification("Queue optimized by AI");
           } else {
-              showNotification("Not enough songs for AI Shuffle");
               setShuffleMode('normal');
+              showNotification("Using Normal Shuffle");
           }
       }
   };
@@ -352,66 +379,50 @@ function App() {
       showNotification(`Repeat: ${newMode === 'one' ? 'One Song' : newMode === 'all' ? 'All' : 'Off'}`);
   };
 
-  // --- INFINITE AUTOPLAY LOGIC ---
+  // --- INTELLIGENT AUTOPLAY LOGIC ---
   const handleNext = async () => {
-    // 1. Repeat One
     if (repeatMode === 'one' && currentSong) {
         audioEngine.seek(0);
         audioEngine.play();
         return;
     }
 
-    // 2. Queue Consumption
     if (queue.length > 0) {
        const next = queue[0];
        setQueue(prev => prev.slice(1));
-       playSong(next, true); // Push current to history
+       playSong(next, true); 
     } else {
-        // Queue Empty
         if (repeatMode === 'all' && originalQueue.length > 0) {
-            // Restart Queue
             const resetQueue = [...originalQueue];
             const next = resetQueue[0];
             setQueue(resetQueue.slice(1));
-            playSong(next, true); // Push current to history
+            playSong(next, true); 
             showNotification("Playlist restarting...");
         } else if (currentSong) {
-             // 3. INFINITE AUTOPLAY
-             // Never stop music. Fetch recommendations based on current song.
-             showNotification("⚡ Autoplay: Matching vibes...");
+             showNotification("Autoplay: Loading...");
              try {
-                // Strategy: Search for artist or related mix
-                const strategies = [
-                    currentSong.artist, 
-                    `${currentSong.artist} mix`,
-                    currentSong.title + " similar"
-                ];
-                const query = strategies[Math.floor(Math.random() * strategies.length)];
-                
-                let similarSongs = await searchTracks(query);
-                // Filter out current and duplicates
+                const preferredLangs = userProfile?.languages || ['Hindi', 'English'];
+                const vibeQuery = await generateVibeQuery(currentSong, preferredLangs);
+                let similarSongs = await searchTracks(vibeQuery);
                 similarSongs = similarSongs.filter(s => s.id !== currentSong.id && s.title !== currentSong.title);
                 
                 if (similarSongs.length === 0) {
-                     // Fallback to a random discovery mix
-                     const mix = await getDiscoverMix(userProfile || undefined);
-                     similarSongs = mix.songs.filter(s => s.id !== currentSong.id);
+                     const query = `${currentSong.artist} similar`;
+                     similarSongs = await searchTracks(query);
+                     similarSongs = similarSongs.filter(s => s.id !== currentSong.id);
                 }
-
+                
                 if (similarSongs.length > 0) {
                      const next = similarSongs[0];
                      const rest = similarSongs.slice(1);
-                     setQueue(rest); // Queue up the rest
+                     setQueue(rest);
                      playSong(next, true);
                 } else {
-                    // Fallback if everything fails (rare)
                     audioEngine.seek(0);
                     audioEngine.play(); 
-                    showNotification("Replaying current song (Offline/No match)");
+                    showNotification("Replaying current song");
                 }
              } catch (e) {
-                 console.error("Autoplay Error", e);
-                 // Fallback
                  audioEngine.seek(0);
                  audioEngine.play();
              }
@@ -419,41 +430,27 @@ function App() {
     }
   };
 
-  // Keep ref updated
   useEffect(() => {
       handleNextRef.current = handleNext;
-  }, [handleNext, repeatMode, queue, currentSong, originalQueue]);
-
+  }, [handleNext, repeatMode, queue, currentSong, originalQueue, userProfile]);
 
   const handlePrev = () => {
-     // If played more than 3 seconds, restart current song
      if (audioEngine.currentTime > 3) {
          audioEngine.seek(0);
      } else if (history.length > 0) {
-         // Go back in history
          const prevSong = history[history.length - 1];
-         
-         // Remove from history
          setHistory(prev => prev.slice(0, -1));
-         
-         // Add current song back to the start of the queue so "Next" goes back to it
-         if (currentSong) {
-             setQueue(q => [currentSong, ...q]);
-         }
-         
-         // Play previous without adding the current one to history (avoids loop)
+         if (currentSong) setQueue(q => [currentSong, ...q]);
          playSongInternal(prevSong);
      } else {
          audioEngine.seek(0);
      }
   };
 
-  // --- MEDIA SESSION ACTION HANDLERS ---
   const handlePrevRef = useRef<() => void>(() => {});
   useEffect(() => { handlePrevRef.current = handlePrev; }, [handlePrev]);
 
   useEffect(() => {
-      // Register Media Session Callbacks
       audioEngine.setMediaSessionHandlers({
           onPlay: () => { setIsPlaying(true); },
           onPause: () => { setIsPlaying(false); },
@@ -461,7 +458,6 @@ function App() {
           onPrev: () => { handlePrevRef.current(); }
       });
   }, []);
-
 
   const handleAddToQueue = (song: Song, e?: React.MouseEvent) => {
       if (e) e.stopPropagation();
@@ -474,7 +470,6 @@ function App() {
       showNotification(`Added "${song.title}" to queue`);
   };
 
-  // Search Logic (Debounced)
   useEffect(() => {
      const delayDebounceFn = setTimeout(async () => {
        if (searchQuery && view === 'search') {
@@ -515,7 +510,6 @@ function App() {
       setIsMenuOpen(false);
   };
 
-  // Playlist Logic
   const handleAddToPlaylist = (playlistId: string) => {
     if (!playlistModalSong) return;
     setPlaylists(prev => prev.map(pl => {
@@ -542,11 +536,17 @@ function App() {
     showNotification(`Created playlist "${name}"`);
   };
 
-  // Theme Classes for Velvet/Neon
+  const deletePlaylist = (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if(confirm("Delete this playlist?")) {
+          setPlaylists(prev => prev.filter(p => p.id !== id));
+      }
+  }
+
+  // Styles
   const bgClass = theme === 'dark' ? 'bg-[#0f0518] text-white' : 'bg-gray-100 text-gray-900';
   const drawerClass = theme === 'dark' ? 'bg-[#150620] border-[#331144]' : 'bg-white border-gray-200';
   const headerClass = theme === 'dark' ? 'text-white' : 'text-gray-900';
-  // Enhanced card class
   const cardClass = theme === 'dark' ? 'bg-white/5 hover:bg-white/10 border border-white/5 hover:border-[#d946ef] backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(217,70,239,0.3)]' : 'bg-white hover:bg-gray-50 shadow-md border-gray-200';
   const textSecondary = theme === 'dark' ? 'text-gray-400' : 'text-gray-500';
   const neonCyan = "text-[#22d3ee]"; 
@@ -556,25 +556,52 @@ function App() {
     {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
     
+    {/* PLAY SELECTION MODAL */}
+    {playSelection && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="bg-[#181818] p-6 rounded-2xl w-80 shadow-2xl border border-gray-700 relative">
+                <h3 className="text-xl font-bold text-white mb-2 truncate">Play {playSelection.title}</h3>
+                <p className="text-gray-400 text-sm mb-6">How would you like to listen?</p>
+                <div className="space-y-3">
+                    <button 
+                        onClick={() => {
+                            handleSmartPlay(playSelection.songs, 'normal');
+                            setPlaySelection(null);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl bg-white/10 hover:bg-white/20 transition text-white font-medium group"
+                    >
+                        <Play size={20} className="text-[#22d3ee] group-hover:fill-current" /> Normal Play
+                    </button>
+                    <button 
+                         onClick={() => {
+                            handleSmartPlay(playSelection.songs, 'shuffle');
+                            setPlaySelection(null);
+                        }}
+                        className="w-full flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-[#d946ef] to-[#22d3ee] text-white font-bold shadow-lg hover:scale-105 transition"
+                    >
+                        <Shuffle size={20} /> Shuffle Play
+                    </button>
+                </div>
+                <button onClick={() => setPlaySelection(null)} className="mt-6 text-xs text-gray-500 w-full text-center hover:text-white uppercase tracking-widest">Cancel</button>
+            </div>
+        </div>
+    )}
+    
     <div className={`flex flex-col h-screen ${bgClass} overflow-hidden relative font-sans transition-colors duration-300 selection:bg-[#d946ef] selection:text-white`}>
-      {/* Global Velvet Radial Background */}
       {theme === 'dark' && (
           <div className="absolute inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_top_right,_#4a044e_0%,_transparent_40%),radial-gradient(circle_at_bottom_left,_#0e7490_0%,_transparent_40%)] opacity-60"></div>
       )}
 
-      {/* Visualizer */}
       <div className={theme === 'light' ? 'opacity-10' : 'opacity-100'}>
         <Visualizer />
       </div>
 
-      {/* Notification Toast */}
       {notification && (
           <div className="fixed top-24 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-[#d946ef] to-[#22d3ee] text-white px-6 py-2 rounded-full shadow-[0_0_20px_rgba(217,70,239,0.5)] z-[70] font-bold animate-in fade-in slide-in-from-top-4 border border-white/20 whitespace-nowrap">
               {notification}
           </div>
       )}
       
-      {/* FIXED TOP HEADER */}
       <header className={`absolute top-0 left-0 right-0 h-16 z-50 px-4 flex justify-between items-center ${theme === 'dark' ? 'bg-[#0f0518]/70' : 'bg-white/80'} backdrop-blur-xl border-b ${theme === 'dark' ? 'border-[#d946ef]/20' : 'border-black/5'}`}>
           <button onClick={() => setIsMenuOpen(true)} className="p-2 rounded-full hover:bg-white/10 transition">
               <Menu size={28} className={headerClass} />
@@ -591,11 +618,9 @@ function App() {
           </div>
       </header>
 
-      {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto pt-20 pb-48 z-10 scroll-smooth">
              {view === 'home' && (
                <div className="p-4 md:p-8 space-y-10">
-                  {/* Personal Greeting */}
                   {userProfile && (
                       <div className="mb-[-20px] animate-in fade-in slide-in-from-top-4 duration-700">
                           <h2 className="text-3xl font-bold text-white">
@@ -605,7 +630,6 @@ function App() {
                       </div>
                   )}
 
-                  {/* Mixes */}
                   {homeMixes.length === 0 && (
                       <div className="flex flex-col items-center justify-center h-64 space-y-4">
                           <div className="w-12 h-12 border-4 border-[#d946ef] border-t-transparent rounded-full animate-spin"></div>
@@ -620,7 +644,6 @@ function App() {
                           <span className="text-xs text-[#d946ef] uppercase tracking-wider font-bold cursor-pointer hover:text-[#22d3ee] transition-colors drop-shadow-[0_0_5px_rgba(217,70,239,0.5)]">View All</span>
                       </div>
                       
-                      {/* Horizontal Song Scroller */}
                       <div className="flex overflow-x-auto gap-5 pb-6 scrollbar-hide snap-x px-1">
                         {mix.songs.map(song => (
                           <div 
@@ -631,7 +654,6 @@ function App() {
                             <div className="relative mb-3 aspect-square overflow-hidden rounded-xl shadow-lg">
                                <img src={song.coverUrl} className="w-full h-full object-cover transition duration-500 group-hover:scale-110 group-hover:rotate-1" alt="" />
                                
-                               {/* Hover Actions */}
                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-2">
                                    <div className="flex justify-between w-full">
                                        <button 
@@ -651,7 +673,6 @@ function App() {
                                    </div>
                                </div>
 
-                               {/* Play Overlay Icon */}
                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300 pointer-events-none">
                                    <div className="bg-[#d946ef]/90 rounded-full p-3 shadow-[0_0_20px_#d946ef] backdrop-blur-sm">
                                        <Play size={20} fill="white" className="ml-1 text-white" />
@@ -673,8 +694,6 @@ function App() {
                </div>
              )}
              
-             {/* ... (Search, Liked, Profile views remain same but consume userProfile if needed) ... */}
-
              {view === 'search' && (
                <div className="p-4 md:p-8 min-h-full">
                   <div className="relative group mb-6">
@@ -742,7 +761,6 @@ function App() {
              {view === 'liked-songs' && (
                  <div className="p-4 md:p-8">
                      <div className="flex items-center gap-6 mb-8 p-8 bg-gradient-to-r from-[#701a75] to-[#155e75] rounded-[2rem] shadow-2xl text-white relative border border-white/10 overflow-hidden group">
-                         {/* Background glow */}
                          <div className="absolute top-[-50%] left-[-20%] w-96 h-96 bg-[#d946ef] rounded-full blur-[120px] opacity-30 group-hover:opacity-40 transition-opacity duration-700"></div>
                          
                          <div className="w-28 h-28 bg-white/10 flex items-center justify-center rounded-3xl backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.3)] border border-white/20 z-10">
@@ -752,10 +770,11 @@ function App() {
                              <h1 className="text-4xl font-bold tracking-tight mb-2">Liked Songs</h1>
                              <p className="text-gray-200 font-medium tracking-wide">{likedSongs.length} neon tracks saved</p>
                          </div>
-                         {/* Play All Button for Liked Songs */}
+                         
+                         {/* Play All Button triggering Modal */}
                          {likedSongs.length > 0 && (
                             <button 
-                              onClick={() => playFromList(likedSongs[0], likedSongs)}
+                              onClick={() => setPlaySelection({ title: 'Liked Songs', songs: likedSongs })}
                               className="absolute bottom-6 right-6 w-16 h-16 bg-[#22d3ee] rounded-full flex items-center justify-center shadow-[0_0_20px_#22d3ee] hover:scale-105 transition hover:bg-[#67e8f9] text-black z-20 border-4 border-white/20"
                             >
                               <Play size={32} fill="black" className="ml-1" />
@@ -785,9 +804,9 @@ function App() {
                  </div>
              )}
 
-             {/* Rest of views like profile, etc. */}
+             {/* PROFILE & LIBRARY VIEW */}
              {view === 'profile' && (
-                 <div className="p-4 md:p-8">
+                 <div className="p-4 md:p-8 pb-20">
                     <div className="flex flex-col items-center mb-8 relative">
                         <div className="absolute w-full h-full bg-[#d946ef] blur-[100px] opacity-10 top-0"></div>
                         <div className="w-32 h-32 rounded-full bg-gradient-to-tr from-[#d946ef] to-[#22d3ee] flex items-center justify-center text-6xl font-bold text-white mb-4 shadow-[0_0_30px_#d946ef] border-4 border-[#0f0518] z-10 relative">
@@ -805,7 +824,7 @@ function App() {
                         </div>
                     </div>
 
-                    <div className="mt-8 text-center">
+                    <div className="mt-8 text-center mb-10">
                         <h3 className={`font-bold text-xl mb-6 ${headerClass}`}>Your Stats</h3>
                         <div className="grid grid-cols-3 gap-6">
                             <div className={`${cardClass} p-6 rounded-2xl`}>
@@ -822,6 +841,57 @@ function App() {
                             </div>
                         </div>
                     </div>
+
+                    {/* MY LIBRARY / PLAYLISTS SECTION */}
+                    <div className="mb-8">
+                        <h3 className={`font-bold text-xl mb-6 ${headerClass} flex items-center gap-2`}>
+                            <FolderHeart className="text-[#d946ef]" /> My Playlists
+                        </h3>
+                        
+                        {playlists.length === 0 ? (
+                            <div className={`${cardClass} p-8 rounded-2xl text-center`}>
+                                <p className={textSecondary}>You haven't created any playlists yet.</p>
+                                <p className="text-xs text-gray-500 mt-2">Tap "Add to Playlist" on any song to start.</p>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                {playlists.map(playlist => (
+                                    <div 
+                                        key={playlist.id} 
+                                        className={`${cardClass} p-4 rounded-xl cursor-pointer hover:scale-[1.02] transition relative group`}
+                                        onClick={(e) => {
+                                            // Trigger Play Options Modal
+                                            if (playlist.songs.length > 0) {
+                                                setPlaySelection({ title: playlist.name, songs: playlist.songs });
+                                            } else {
+                                                showNotification("This playlist is empty.");
+                                            }
+                                        }}
+                                    >
+                                        <div className="relative aspect-square rounded-lg overflow-hidden mb-3 bg-gray-800">
+                                            {playlist.coverUrl ? (
+                                                <img src={playlist.coverUrl} className="w-full h-full object-cover" alt="" />
+                                            ) : (
+                                                <div className="w-full h-full flex items-center justify-center"><Music2 className="text-gray-600" size={32} /></div>
+                                            )}
+                                            <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                                <Play fill="white" className="text-white" />
+                                            </div>
+                                        </div>
+                                        <h4 className={`font-bold text-sm truncate ${headerClass}`}>{playlist.name}</h4>
+                                        <p className={`text-xs ${textSecondary}`}>{playlist.songs.length} songs</p>
+                                        
+                                        <button 
+                                            onClick={(e) => deletePlaylist(playlist.id, e)}
+                                            className="absolute top-2 right-2 p-1.5 bg-black/60 rounded-full text-red-400 opacity-0 group-hover:opacity-100 transition hover:bg-red-500 hover:text-white"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                  </div>
              )}
              
@@ -829,7 +899,6 @@ function App() {
                 <div className="p-4 md:p-8 space-y-6">
                     <h2 className={`text-3xl font-bold mb-6 ${headerClass}`}>Settings</h2>
                     
-                    {/* Theme */}
                     <div className={`${cardClass} p-4 rounded-xl flex justify-between items-center`}>
                         <div className="flex items-center gap-3">
                             {theme === 'dark' ? <Moon className="text-[#22d3ee]" /> : <Sun className="text-orange-400" />}
@@ -846,7 +915,6 @@ function App() {
                         </button>
                     </div>
 
-                    {/* Spatial Audio */}
                     <div className={`${cardClass} p-4 rounded-xl`}>
                          <div className="mb-4">
                             <h3 className={`font-bold ${headerClass}`}>Default Spatial Audio</h3>
@@ -865,7 +933,6 @@ function App() {
                          </div>
                     </div>
 
-                    {/* Reset Data */}
                     <div className={`${cardClass} p-4 rounded-xl flex justify-between items-center border-red-500/20`}>
                         <div className="flex items-center gap-3">
                             <RefreshCw className="text-red-500" />
@@ -928,7 +995,6 @@ function App() {
              )}
       </div>
 
-      {/* Side Menu Drawer */}
       <div 
         className={`fixed inset-y-0 left-0 w-3/4 max-w-xs ${drawerClass} border-r z-[60] transform transition-transform duration-300 ease-in-out shadow-2xl flex flex-col ${isMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}
       >
@@ -961,10 +1027,8 @@ function App() {
                Harmonix v3.5.0
            </div>
       </div>
-      {/* Overlay for Menu */}
       {isMenuOpen && <div onClick={() => setIsMenuOpen(false)} className="fixed inset-0 bg-black/60 z-[50] backdrop-blur-sm"></div>}
 
-      {/* Mini Player Bar - Only visible if currentSong is set */}
       {currentSong && !isPlayerExpanded && (
           <div className={`fixed bottom-[66px] left-0 right-0 z-40 ${theme === 'dark' ? 'bg-transparent' : 'bg-white'} `}>
               <PlayerBar 
@@ -978,7 +1042,6 @@ function App() {
           </div>
       )}
 
-      {/* Full Screen Player */}
       {currentSong && isPlayerExpanded && (
           <FullScreenPlayer 
              currentSong={currentSong}
@@ -989,7 +1052,6 @@ function App() {
              onClose={() => setIsPlayerExpanded(false)}
              isLiked={!!currentSong && !!likedSongs.find(s => s.id === currentSong.id)}
              onToggleLike={toggleLike}
-             // Handled internally now, but keeping prop signature
              onToggleLyrics={() => {}} 
              onToggleQueue={() => setShowQueue(!showQueue)}
              
@@ -1000,7 +1062,6 @@ function App() {
           />
       )}
 
-      {/* Bottom Navigation Taskbar */}
       <div className={`fixed bottom-0 left-0 w-full h-[64px] ${theme === 'dark' ? 'bg-[#0f0518]/90 border-[#2a0f35]' : 'bg-white/95 border-gray-200'} backdrop-blur-xl border-t z-50 flex items-center justify-around pb-2 shadow-2xl`}>
           <button 
              onClick={() => setView('home')} 
@@ -1032,7 +1093,6 @@ function App() {
           </button>
       </div>
 
-      {/* Overlays */}
       <PlaylistModal 
         isOpen={!!playlistModalSong} 
         onClose={() => setPlaylistModalSong(null)} 
@@ -1041,8 +1101,6 @@ function App() {
         onCreatePlaylist={handleCreatePlaylist}
         song={playlistModalSong}
       />
-
-      {/* Removed old fixed LyricsView */}
 
       {selectedArtist && (
           <ArtistModal 
@@ -1065,11 +1123,3 @@ function App() {
 }
 
 export default App;
-const rootElement = document.getElementById('root');
-if (rootElement) {
-  ReactDOM.createRoot(rootElement).render(
-    <React.StrictMode>
-      <App />
-    </React.StrictMode>
-  );
-}

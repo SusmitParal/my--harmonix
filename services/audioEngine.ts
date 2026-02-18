@@ -232,6 +232,10 @@ class AudioEngine {
     return this.audioElement.duration || 0;
   }
 
+  getMode(): SpatialMode {
+      return this.currentMode;
+  }
+
   setSpatialMode(mode: SpatialMode) {
     this.currentMode = mode;
     if (mode === 'off' && this.pannerNode) {
