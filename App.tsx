@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
   Settings, User, Download, Menu, X, Bell, Moon, Sun, Users, Smartphone as PhoneIcon,
-  ListMusic, ListPlus, Trash2, Play, RefreshCw, LogOut, Music2, FolderHeart, Shuffle
+  ListMusic, ListPlus, Trash2, Play, RefreshCw, LogOut, Music2, FolderHeart, Shuffle, AlertTriangle
 } from 'lucide-react';
 import { Song, Playlist, ViewState, SpatialMode, ShuffleMode, RepeatMode, UserProfile } from './types';
 import { DEMO_TRACK_URL, MOCK_PLAYLISTS, GENRES } from './constants';
@@ -19,7 +19,54 @@ import { PlaylistModal } from './components/PlaylistModal';
 import { SplashScreen } from './components/SplashScreen';
 import { Onboarding } from './components/Onboarding';
 
-function App() {
+// --- Error Boundary Component ---
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: any, errorInfo: any) {
+    console.error("Uncaught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen bg-[#0f0518] text-white p-6 text-center z-[9999] relative">
+            <AlertTriangle size={64} className="text-[#d946ef] mb-6 animate-pulse" />
+            <h1 className="text-2xl font-bold text-white mb-2">Neon Glitch Detected</h1>
+            <p className="mb-8 text-gray-400 max-w-xs">The vibe got too intense. Reset the app to clear the interference.</p>
+            <button 
+                onClick={() => {
+                    localStorage.clear();
+                    window.location.reload();
+                }}
+                className="px-8 py-4 bg-gradient-to-r from-[#d946ef] to-[#22d3ee] rounded-full font-bold text-white shadow-[0_0_20px_rgba(217,70,239,0.5)] hover:scale-105 transition"
+            >
+                Reset System
+            </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+function AppContent() {
   const [showSplash, setShowSplash] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -87,15 +134,20 @@ function App() {
              console.warn("Splash screen timed out, forcing close.");
              handleSplashComplete();
           }
-      }, 8000); // 8 seconds max
+      }, 6000); // Reduced to 6 seconds
       return () => clearTimeout(safetyTimer);
   }, [showSplash]);
 
   // 2. Load User Profile on Mount
   useEffect(() => {
-     const storedProfile = localStorage.getItem('harmonix_user_profile');
-     if (storedProfile) {
-         setUserProfile(JSON.parse(storedProfile));
+     try {
+         const storedProfile = localStorage.getItem('harmonix_user_profile');
+         if (storedProfile) {
+             setUserProfile(JSON.parse(storedProfile));
+         }
+     } catch (e) {
+         console.warn("Profile corrupted, clearing.");
+         localStorage.removeItem('harmonix_user_profile');
      }
   }, []);
 
@@ -165,58 +217,71 @@ function App() {
 
   // --- Persistence Logic ---
   
-  // 1. Restore state on mount
+  // 1. Restore state on mount (SAFE MODE)
   useEffect(() => {
-    const lastSong = localStorage.getItem('omni_last_song');
-    const lastTime = localStorage.getItem('omni_last_time');
-    const lastQueue = localStorage.getItem('omni_last_queue');
-    const lastLiked = localStorage.getItem('omni_liked_songs');
-    const lastHistory = localStorage.getItem('omni_history');
-    const lastPlaylists = localStorage.getItem('omni_playlists');
+    try {
+        const lastSong = localStorage.getItem('omni_last_song');
+        const lastTime = localStorage.getItem('omni_last_time');
+        const lastQueue = localStorage.getItem('omni_last_queue');
+        const lastLiked = localStorage.getItem('omni_liked_songs');
+        const lastHistory = localStorage.getItem('omni_history');
+        const lastPlaylists = localStorage.getItem('omni_playlists');
 
-    if (lastLiked) {
-        try { setLikedSongs(JSON.parse(lastLiked)); } catch {}
-    }
-    if(lastHistory) {
-         try { setHistory(JSON.parse(lastHistory)); } catch {}
-    }
-    if (lastPlaylists) {
-         try { setPlaylists(JSON.parse(lastPlaylists)); } catch {}
-    }
+        if (lastLiked) {
+            try { setLikedSongs(JSON.parse(lastLiked)); } catch {}
+        }
+        if(lastHistory) {
+            try { setHistory(JSON.parse(lastHistory)); } catch {}
+        }
+        if (lastPlaylists) {
+            try { setPlaylists(JSON.parse(lastPlaylists)); } catch {}
+        }
 
-    if (lastSong) {
-        try {
-            const song = JSON.parse(lastSong);
-            const queueSaved = lastQueue ? JSON.parse(lastQueue) : [];
-            
-            setCurrentSong(song);
-            setQueue(queueSaved);
-            if (queueSaved.length > 0) setOriginalQueue(queueSaved);
+        if (lastSong) {
+            try {
+                const song = JSON.parse(lastSong);
+                const queueSaved = lastQueue ? JSON.parse(lastQueue) : [];
+                
+                setCurrentSong(song);
+                setQueue(queueSaved);
+                if (queueSaved.length > 0) setOriginalQueue(queueSaved);
 
-            // Load audio but do NOT auto-play
-            const url = song.audioUrl || song.previewUrl || DEMO_TRACK_URL;
-            audioEngine.loadTrack(url).then(() => {
-                if (lastTime) {
-                    const time = parseFloat(lastTime);
-                    if (!isNaN(time) && isFinite(time)) {
-                        audioEngine.seek(time);
+                // Load audio but do NOT auto-play
+                const url = song.audioUrl || song.previewUrl || DEMO_TRACK_URL;
+                
+                // Safe load
+                audioEngine.loadTrack(url).then(() => {
+                    if (lastTime) {
+                        const time = parseFloat(lastTime);
+                        if (!isNaN(time) && isFinite(time)) {
+                            audioEngine.seek(time);
+                        }
                     }
-                }
-            });
-            audioEngine.updateMediaSession(song);
-        } catch (e) { console.error("Restore failed", e); }
+                }).catch(err => console.error("Audio Load Error:", err));
+                
+                audioEngine.updateMediaSession(song);
+            } catch (e) { console.error("Restore Song failed", e); }
+        }
+    } catch (e) {
+        console.error("Critical Restore Error", e);
+        // If critical error, clear to save app
+        localStorage.clear();
     }
   }, []);
 
   // 2. Save state on change
   useEffect(() => {
-      if (currentSong) {
-          localStorage.setItem('omni_last_song', JSON.stringify(currentSong));
-          localStorage.setItem('omni_last_queue', JSON.stringify(queue));
-          localStorage.setItem('omni_history', JSON.stringify(history));
+      try {
+          if (currentSong) {
+              localStorage.setItem('omni_last_song', JSON.stringify(currentSong));
+              localStorage.setItem('omni_last_queue', JSON.stringify(queue));
+              localStorage.setItem('omni_history', JSON.stringify(history));
+          }
+          localStorage.setItem('omni_liked_songs', JSON.stringify(likedSongs));
+          localStorage.setItem('omni_playlists', JSON.stringify(playlists));
+      } catch (e) {
+          console.warn("Storage full or error", e);
       }
-      localStorage.setItem('omni_liked_songs', JSON.stringify(likedSongs));
-      localStorage.setItem('omni_playlists', JSON.stringify(playlists));
   }, [currentSong, queue, likedSongs, history, playlists]);
 
   // 3. Save time periodically
@@ -1122,4 +1187,11 @@ function App() {
   );
 }
 
-export default App;
+// Wrap main app content in Error Boundary
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <AppContent />
+    </ErrorBoundary>
+  );
+}
