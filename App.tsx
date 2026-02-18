@@ -20,6 +20,9 @@ import { PlaylistModal } from './components/PlaylistModal';
 import { SplashScreen } from './components/SplashScreen';
 import { Onboarding } from './components/Onboarding';
 
+// Incremented version to force cleanup of old bad data
+const APP_VERSION = '3.7.0';
+
 // --- Error Boundary Component ---
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -30,7 +33,10 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  public state: ErrorBoundaryState = { hasError: false };
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
 
   static getDerivedStateFromError(error: any) {
     return { hasError: true };
@@ -123,11 +129,65 @@ function AppContent() {
   const [homeMixes, setHomeMixes] = useState<{title: string, songs: Song[]}[]>([]);
   const sleepTimerRef = useRef<number | null>(null);
 
-  // --- INITIALIZATION SEQUENCE ---
+  // --- VERSION CHECK & INITIALIZATION SEQUENCE ---
   
-  // 1. Safety Timeout for Splash Screen
+  // 1. Version Check & Safe Data Loading
   useEffect(() => {
-      // Reduced to 4000ms to allow quicker entry and fail-safe if animation hangs
+      // Check version to prevent stale data crashes
+      const currentVersion = localStorage.getItem('app_version');
+      if (currentVersion !== APP_VERSION) {
+          console.log(`Version mismatch (Old: ${currentVersion}, New: ${APP_VERSION}). Clearing critical storage.`);
+          // We clear specific keys instead of everything to keep user profile if possible, 
+          // OR clear everything if major version change. For safety, let's clear playback state.
+          localStorage.removeItem('omni_last_song');
+          localStorage.removeItem('omni_last_queue');
+          localStorage.setItem('app_version', APP_VERSION);
+      }
+
+      // Safe Data Restoration
+      try {
+        const storedProfile = localStorage.getItem('harmonix_user_profile');
+        if (storedProfile) setUserProfile(JSON.parse(storedProfile));
+        
+        const lastLiked = localStorage.getItem('omni_liked_songs');
+        if (lastLiked) setLikedSongs(JSON.parse(lastLiked));
+
+        const lastPlaylists = localStorage.getItem('omni_playlists');
+        if (lastPlaylists) setPlaylists(JSON.parse(lastPlaylists));
+
+        // Song Restoration
+        const lastSong = localStorage.getItem('omni_last_song');
+        const lastTime = localStorage.getItem('omni_last_time');
+        const lastQueue = localStorage.getItem('omni_last_queue');
+        
+        if (lastSong) {
+            const song = JSON.parse(lastSong);
+            const queueSaved = lastQueue ? JSON.parse(lastQueue) : [];
+            
+            setCurrentSong(song);
+            setQueue(queueSaved);
+            if (queueSaved.length > 0) setOriginalQueue(queueSaved);
+
+            // Important: Don't await this, let it happen in background
+            const url = song.audioUrl || song.previewUrl || DEMO_TRACK_URL;
+            audioEngine.loadTrack(url).then(() => {
+                if (lastTime) {
+                    const t = parseFloat(lastTime);
+                    if (!isNaN(t)) audioEngine.seek(t);
+                }
+            }).catch(e => console.warn("Background audio load failed", e));
+
+            audioEngine.updateMediaSession(song);
+        }
+      } catch (e) {
+          console.error("Initialization Error", e);
+          // Fallback: Clear potentially corrupt data
+          localStorage.removeItem('omni_last_song');
+      }
+  }, []);
+
+  // 2. Safety Timeout for Splash Screen (Prevent Purple Screen of Death)
+  useEffect(() => {
       const safetyTimer = setTimeout(() => {
           if (showSplash) {
              console.warn("Splash screen timed out, forcing close.");
@@ -137,18 +197,6 @@ function AppContent() {
       return () => clearTimeout(safetyTimer);
   }, [showSplash]);
 
-  // 2. Load User Profile on Mount
-  useEffect(() => {
-     try {
-         const storedProfile = localStorage.getItem('harmonix_user_profile');
-         if (storedProfile) {
-             setUserProfile(JSON.parse(storedProfile));
-         }
-     } catch (e) {
-         console.warn("Profile corrupted, clearing.");
-         localStorage.removeItem('harmonix_user_profile');
-     }
-  }, []);
 
   // 3. Handle Splash Completion logic
   const handleSplashComplete = () => {
@@ -215,60 +263,7 @@ function AppContent() {
   }, [view, showSplash, showOnboarding, userProfile]);
 
   // --- Persistence Logic ---
-  
-  // 1. Restore state on mount (SAFE MODE)
-  useEffect(() => {
-    try {
-        const lastSong = localStorage.getItem('omni_last_song');
-        const lastTime = localStorage.getItem('omni_last_time');
-        const lastQueue = localStorage.getItem('omni_last_queue');
-        const lastLiked = localStorage.getItem('omni_liked_songs');
-        const lastHistory = localStorage.getItem('omni_history');
-        const lastPlaylists = localStorage.getItem('omni_playlists');
-
-        if (lastLiked) {
-            try { setLikedSongs(JSON.parse(lastLiked)); } catch {}
-        }
-        if(lastHistory) {
-            try { setHistory(JSON.parse(lastHistory)); } catch {}
-        }
-        if (lastPlaylists) {
-            try { setPlaylists(JSON.parse(lastPlaylists)); } catch {}
-        }
-
-        if (lastSong) {
-            try {
-                const song = JSON.parse(lastSong);
-                const queueSaved = lastQueue ? JSON.parse(lastQueue) : [];
-                
-                setCurrentSong(song);
-                setQueue(queueSaved);
-                if (queueSaved.length > 0) setOriginalQueue(queueSaved);
-
-                // Load audio but do NOT auto-play
-                const url = song.audioUrl || song.previewUrl || DEMO_TRACK_URL;
-                
-                // Safe load
-                audioEngine.loadTrack(url).then(() => {
-                    if (lastTime) {
-                        const time = parseFloat(lastTime);
-                        if (!isNaN(time) && isFinite(time)) {
-                            audioEngine.seek(time);
-                        }
-                    }
-                }).catch(err => console.error("Audio Load Error:", err));
-                
-                audioEngine.updateMediaSession(song);
-            } catch (e) { console.error("Restore Song failed", e); }
-        }
-    } catch (e) {
-        console.error("Critical Restore Error", e);
-        // If critical error, clear to save app
-        localStorage.clear();
-    }
-  }, []);
-
-  // 2. Save state on change
+  // Save state on change
   useEffect(() => {
       try {
           if (currentSong) {
@@ -283,7 +278,7 @@ function AppContent() {
       }
   }, [currentSong, queue, likedSongs, history, playlists]);
 
-  // 3. Save time periodically
+  // Save time periodically
   useEffect(() => {
       const interval = setInterval(() => {
           if (isPlaying) {
@@ -611,7 +606,7 @@ function AppContent() {
   const bgClass = theme === 'dark' ? 'bg-[#0f0518] text-white' : 'bg-gray-100 text-gray-900';
   const drawerClass = theme === 'dark' ? 'bg-[#150620] border-[#331144]' : 'bg-white border-gray-200';
   const headerClass = theme === 'dark' ? 'text-white' : 'text-gray-900';
-  const cardClass = theme === 'dark' ? 'bg-white/5 hover:bg-white/10 border border-white/5 hover:border-[#d946ef] backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(217,70,239,0.3)]' : 'bg-white hover:bg-gray-50 shadow-md border-gray-200';
+  const cardClass = theme === 'dark' ? 'bg-white/5 hover:bg-white/10 border border-white/5 hover:border-[#d946ef] backdrop-blur-md shadow-lg hover:shadow-[0_0_15px_rgba(217,70,239,0.3)]' : 'bg-white hover:bg-gray-5 shadow-md border-gray-200';
   const textSecondary = theme === 'dark' ? 'text-gray-400' : 'text-gray-500';
   const neonCyan = "text-[#22d3ee]"; 
 
