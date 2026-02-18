@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, ReactNode } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
@@ -33,10 +32,7 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: any) {
     return { hasError: true };

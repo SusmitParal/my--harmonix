@@ -28,8 +28,8 @@ async function fetchFromSaavnFastest(path: string): Promise<any> {
     const requests = SAAVN_API_ENDPOINTS.map(baseUrl => {
         return new Promise(async (resolve, reject) => {
             const controller = new AbortController();
-            // Reduced timeout to 3.5s for faster UI response if API hangs
-            const timeoutId = setTimeout(() => controller.abort(), 3500); 
+            // Increased timeout slightly to 5s to prevent cutting off slower connections too early
+            const timeoutId = setTimeout(() => controller.abort(), 5000); 
             try {
                 const res = await fetch(`${baseUrl}${path}`, { signal: controller.signal });
                 clearTimeout(timeoutId);
@@ -69,10 +69,14 @@ async function fetchFromSaavn(query: string, limit = 10): Promise<Song[]> {
 
         let bestAudio = '';
         if (Array.isArray(track.downloadUrl)) {
+             // OPTIMIZATION: Prioritize 160kbps for smoother playback/less buffering
              const q320 = track.downloadUrl.find((u: any) => u.quality === '320kbps' || u.link?.includes('320') || u.url?.includes('320'));
              const q160 = track.downloadUrl.find((u: any) => u.quality === '160kbps' || u.link?.includes('160') || u.url?.includes('160'));
-             const last = track.downloadUrl[track.downloadUrl.length - 1];
-             const selected = q320 || q160 || last;
+             const q96 = track.downloadUrl.find((u: any) => u.quality === '96kbps' || u.link?.includes('96') || u.url?.includes('96'));
+             
+             // Prefer 160 (Standard) -> 320 (High) -> 96 (Saver)
+             // 160kbps is the sweet spot for mobile streaming without buffering
+             const selected = q160 || q320 || q96 || track.downloadUrl[track.downloadUrl.length - 1];
              bestAudio = selected?.link || selected?.url || '';
         } else if (typeof track.downloadUrl === 'string') {
              bestAudio = track.downloadUrl;
@@ -93,7 +97,7 @@ async function fetchFromSaavn(query: string, limit = 10): Promise<Song[]> {
             duration: parseInt(track.duration) || 180,
             audioUrl: bestAudio || DEMO_TRACK_URL,
             previewUrl: bestAudio, 
-            quality: 'High (320kbps)'
+            quality: 'Standard (160kbps)'
         };
     });
   } catch (e) {

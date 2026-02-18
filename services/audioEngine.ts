@@ -13,6 +13,7 @@ class AudioEngine {
   
   private audioElement: HTMLAudioElement;
   private animationFrameId: number | null = null;
+  private backgroundIntervalId: any = null;
   
   // Spatial config
   private currentMode: SpatialMode = 'off';
@@ -29,6 +30,10 @@ class AudioEngine {
     this.audioElement = new Audio();
     this.audioElement.crossOrigin = "anonymous"; // Needed for Visualizer/EQ
     
+    // BUFFERING & BACKGROUND OPTIMIZATIONS
+    this.audioElement.preload = "auto"; // Preload as much as possible
+    this.audioElement.setAttribute('playsinline', 'true'); // Helpful for mobile web
+    
     // Error handling: If CORS fails, retry without CORS so user still hears audio
     this.audioElement.onerror = (e) => {
         const src = this.audioElement.src;
@@ -39,6 +44,15 @@ class AudioEngine {
             this.audioElement.play().catch(err => console.error("Retry playback failed", err));
         }
     };
+
+    // Ensure audio context resumes when screen wakes up
+    if (typeof document !== 'undefined') {
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && this.audioContext?.state === 'suspended') {
+                this.audioContext.resume();
+            }
+        });
+    }
 
     this.initMediaSession();
   }
@@ -99,7 +113,9 @@ class AudioEngine {
     }
     
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    this.audioContext = new AudioContextClass();
+    this.audioContext = new AudioContextClass({
+        latencyHint: 'playback' // Optimization: prefers smooth playback over low latency
+    });
     
     // Create Nodes
     try {
@@ -173,8 +189,6 @@ class AudioEngine {
   async loadTrack(url: string) {
     // SMART TRANSITION:
     // If audio is currently playing and hasn't ended naturally, fade it out smoothly.
-    // If it ended naturally, start next one immediately.
-    
     if (this.audioContext && this.gainNode && !this.audioElement.paused && !this.audioElement.ended) {
          try {
              // Quick Fade Out (200ms)
@@ -264,8 +278,15 @@ class AudioEngine {
   }
 
   private startSpatialLoop() {
-    const loop = () => {
-      if (this.currentMode !== 'off' && this.pannerNode && this.audioContext && !this.audioElement.paused) {
+    // We use a dual approach: requestAnimationFrame for smooth visuals when active,
+    // and a setInterval backup to ensure spatial positions update (even if jerkily) in background.
+    
+    // Cleanup existing
+    if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
+    if (this.backgroundIntervalId) clearInterval(this.backgroundIntervalId);
+
+    const updatePosition = () => {
+       if (this.currentMode !== 'off' && this.pannerNode && this.audioContext && !this.audioElement.paused) {
         const time = this.audioContext.currentTime;
         
         let x = 0, y = 0, z = 0;
@@ -294,15 +315,27 @@ class AudioEngine {
 
         // Apply position
         if (this.pannerNode.positionX) {
-             this.pannerNode.positionX.value = x;
-             this.pannerNode.positionY.value = y;
-             this.pannerNode.positionZ.value = z;
+             this.pannerNode.positionX.setValueAtTime(x, time);
+             this.pannerNode.positionY.setValueAtTime(y, time);
+             this.pannerNode.positionZ.setValueAtTime(z, time);
         }
       }
-      
+    };
+
+    // 1. High refresh rate loop for active tab
+    const loop = () => {
+      updatePosition();
       this.animationFrameId = requestAnimationFrame(loop);
     };
     loop();
+
+    // 2. Backup interval for background tab (runs approx once per sec when backgrounded)
+    // This ensures that even if requestAnimationFrame stops, position roughly updates so it doesn't get "stuck" in one ear.
+    this.backgroundIntervalId = setInterval(() => {
+        if (document.hidden) {
+            updatePosition();
+        }
+    }, 500);
   }
 
   // Events
