@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, Component, ReactNode } from 'react';
+
+import React, { useState, useEffect, useRef, ReactNode } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
   Settings, User, Download, Menu, X, Bell, Moon, Sun, Users, Smartphone as PhoneIcon,
@@ -28,7 +29,7 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   public state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: any) {
@@ -124,14 +125,15 @@ function AppContent() {
 
   // --- INITIALIZATION SEQUENCE ---
   
-  // 1. Safety Timeout for Splash Screen (Fix for Purple Screen Hang)
+  // 1. Safety Timeout for Splash Screen
   useEffect(() => {
+      // Reduced to 4000ms to allow quicker entry and fail-safe if animation hangs
       const safetyTimer = setTimeout(() => {
           if (showSplash) {
              console.warn("Splash screen timed out, forcing close.");
              handleSplashComplete();
           }
-      }, 6000); // Reduced to 6 seconds
+      }, 4000); 
       return () => clearTimeout(safetyTimer);
   }, [showSplash]);
 

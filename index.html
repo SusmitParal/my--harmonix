@@ -11,12 +11,12 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Harmonix" />
-    <!-- Updated Icon -->
+    <!-- Icon -->
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3659/3659784.png" />
     <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/3659/3659784.png" />
     
     <title>Harmonix</title>
-    <!-- We keep Tailwind CDN for styling as per existing setup to minimize CSS file changes -->
+    <!-- Tailwind CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -53,6 +53,23 @@
         opacity: 0.6;
         mix-blend-mode: screen;
       }
+      /* Rescue Button Styles */
+      #rescue-btn {
+        display: none;
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        padding: 12px 24px;
+        background: #ef4444;
+        color: white;
+        border-radius: 99px;
+        font-weight: bold;
+        z-index: 99999;
+        box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+        border: 2px solid white;
+        cursor: pointer;
+      }
     </style>
 <script type="importmap">
 {
@@ -70,6 +87,22 @@
 </head>
   <body>
     <div id="root"></div>
+    <button id="rescue-btn" onclick="localStorage.clear(); window.location.reload()">Reset App Data</button>
+    
+    <script>
+      // Rescue Script: If app doesn't load in 4 seconds, show Reset button
+      setTimeout(() => {
+        const root = document.getElementById('root');
+        if (!root || root.innerHTML.trim() === '') {
+          console.warn("App hung on startup. Showing rescue button.");
+          const btn = document.getElementById('rescue-btn');
+          if (btn) {
+            btn.style.display = 'block';
+            btn.innerText = "App Stuck? Tap to Reset";
+          }
+        }
+      }, 4000);
+    </script>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>
