@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useRef, ReactNode } from 'react';
+import React, { Component, useState, useEffect, useRef, ReactNode } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
   Settings, User, Download, Menu, X, Bell, Moon, Sun, Users, Smartphone as PhoneIcon,
@@ -20,8 +19,8 @@ import { PlaylistModal } from './components/PlaylistModal';
 import { SplashScreen } from './components/SplashScreen';
 import { Onboarding } from './components/Onboarding';
 
-// Incremented version to force cleanup of old bad data
-const APP_VERSION = '3.7.0';
+// Bump version to force a cleanup of old corrupted localStorage data
+const APP_VERSION = '3.8.0';
 
 // --- Error Boundary Component ---
 interface ErrorBoundaryProps {
@@ -32,7 +31,7 @@ interface ErrorBoundaryState {
   hasError: boolean;
 }
 
-class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false };
@@ -137,8 +136,7 @@ function AppContent() {
       const currentVersion = localStorage.getItem('app_version');
       if (currentVersion !== APP_VERSION) {
           console.log(`Version mismatch (Old: ${currentVersion}, New: ${APP_VERSION}). Clearing critical storage.`);
-          // We clear specific keys instead of everything to keep user profile if possible, 
-          // OR clear everything if major version change. For safety, let's clear playback state.
+          // Clear potentially corrupt playback state
           localStorage.removeItem('omni_last_song');
           localStorage.removeItem('omni_last_queue');
           localStorage.setItem('app_version', APP_VERSION);

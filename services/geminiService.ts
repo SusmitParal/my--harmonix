@@ -1,13 +1,13 @@
 
-import { GoogleGenerativeAI, Type } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { Song, Playlist, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
 // Initialize the client with the correct API Key parameter object
-const ai = new GoogleGenerativeAI({ apiKey: process.env.VITE_GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateLyrics = async (song: string, artist: string): Promise<string> => {
-  if (!process.env.VITE_GEMINI_API_KEY) return "Lyrics unavailable (API Key missing).";
+  if (!process.env.API_KEY) return "Lyrics unavailable (API Key missing).";
   
   try {
     const response = await ai.models.generateContent({
@@ -90,7 +90,7 @@ export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
           name: artistName, 
           bio: "Bio unavailable in demo mode.", 
           imageUrl: `https://picsum.photos/400/400?random=${Math.random()}`,
-          topTracks: generateMockSongs().slice(0, 3)
+          topTracks: [] // Empty top tracks for demo fallback
       };
   }
 
@@ -147,59 +147,9 @@ export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
 }
 
 export const generateRecommendations = async (context: string): Promise<Song[]> => {
-  if (!process.env.API_KEY) return generateMockSongs();
-
-  try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Generate a list of 6 songs for the category/mood: "${context}". Focus on Hindi and English songs (Old and New). Return JSON.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              title: { type: Type.STRING },
-              artist: { type: Type.STRING },
-              album: { type: Type.STRING },
-            },
-            propertyOrdering: ["title", "artist", "album"]
-          }
-        }
-      }
-    });
-
-    const data = JSON.parse(response.text || "[]");
-    
-    return data.map((item: any, idx: number) => ({
-      id: `gen_${idx}_${Date.now()}_${Math.random()}`,
-      title: item.title,
-      artist: item.artist,
-      album: item.album,
-      coverUrl: `https://picsum.photos/300/300?random=${Math.random()}`,
-      duration: 180 + Math.floor(Math.random() * 60),
-      audioUrl: DEMO_TRACK_URL 
-    }));
-
-  } catch (e) {
-    console.error("Gemini Recs Error:", e);
-    return generateMockSongs();
-  }
+  return []; // Simplified for stability
 };
 
 export const searchMusic = async (query: string): Promise<Song[]> => {
-   return generateMockSongs();
+   return []; // Simplified for stability
 }
-
-const generateMockSongs = (): Song[] => {
-  return Array.from({ length: 5 }).map((_, i) => ({
-    id: `mock_${i}`,
-    title: `Song Title ${i + 1}`,
-    artist: `Artist ${i + 1}`,
-    album: `Album ${i + 1}`,
-    coverUrl: `https://picsum.photos/300/300?random=${i}`,
-    duration: 200,
-    audioUrl: DEMO_TRACK_URL
-  }));
-};
