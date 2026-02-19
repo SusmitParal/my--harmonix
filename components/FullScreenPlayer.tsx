@@ -1,15 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronDown, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, 
-  Layers, Download, Mic2, ListMusic, MoreHorizontal, Clock, MonitorSpeaker, Sparkles, Loader2, RefreshCw, Repeat1,
+  Layers, Download, ListMusic, Clock, MonitorSpeaker, Sparkles, Loader2, Repeat1,
   Headphones
 } from 'lucide-react';
 import { Song, SpatialMode, ArtistInfo, ShuffleMode, RepeatMode } from '../types';
 import { audioEngine } from '../services/audioEngine';
-import { getArtistBio } from '../services/geminiService';
 import { EqualizerModal } from './EqualizerModal';
-import { LyricsView } from './LyricsView';
 
 interface Props {
   currentSong: Song;
@@ -20,7 +18,7 @@ interface Props {
   onClose: () => void;
   isLiked: boolean;
   onToggleLike: () => void;
-  onToggleLyrics: () => void; // Kept for prop interface compatibility, but handled internally now
+  onToggleLyrics: () => void; // Deprecated but kept for signature compatibility
   onToggleQueue: () => void;
   
   shuffleMode: ShuffleMode;
@@ -36,36 +34,41 @@ export const FullScreenPlayer: React.FC<Props> = ({
 }) => {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
   
   // Initialize spatial mode from the ENGINE's current state to ensure instant sync
   const [spatialMode, setSpatialMode] = useState<SpatialMode>(audioEngine.getMode());
   
-  const [artistBio, setArtistBio] = useState<ArtistInfo | null>(null);
   const [showEq, setShowEq] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [showLyrics, setShowLyrics] = useState(false);
   
   // Sleep Timer Local State for Display
   const [timerMinutes, setTimerMinutes] = useState<number | null>(null);
 
   useEffect(() => {
     const updateTime = () => {
-      setProgress(audioEngine.currentTime);
+      // Only update visual progress if user is NOT dragging the slider
+      if (!isDragging) {
+        setProgress(audioEngine.currentTime);
+      }
       setDuration(audioEngine.duration || currentSong.duration || 0);
     };
     audioEngine.onTimeUpdate(updateTime);
-    
-    // Load Artist Bio if not showing lyrics
-    if (!showLyrics) {
-        setArtistBio(null);
-        getArtistBio(currentSong.artist).then(setArtistBio);
-    }
-  }, [currentSong, showLyrics]);
+    // Force initial update
+    updateTime();
+  }, [currentSong, isDragging]);
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const time = parseFloat(e.target.value);
+  // Visual update only while dragging
+  const handleSeekChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setIsDragging(true);
+    setProgress(parseFloat(e.target.value));
+  };
+
+  // Commit seek on release
+  const handleSeekEnd = (e: React.MouseEvent<HTMLInputElement> | React.TouchEvent<HTMLInputElement>) => {
+    const time = parseFloat((e.currentTarget as HTMLInputElement).value);
     audioEngine.seek(time);
-    setProgress(time);
+    setIsDragging(false);
   };
 
   const cycleSpatial = () => {
@@ -83,6 +86,8 @@ export const FullScreenPlayer: React.FC<Props> = ({
     if (!currentSong.audioUrl) return;
 
     setIsDownloading(true);
+    
+    // Strategy: Try Blob fetch (cleanest). Fallback to direct link (works for CORS restricted).
     try {
       const response = await fetch(currentSong.audioUrl);
       if (!response.ok) throw new Error("Network response was not ok");
@@ -97,11 +102,19 @@ export const FullScreenPlayer: React.FC<Props> = ({
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
+      setIsDownloading(false);
     } catch (err) {
-      console.error("Download Failed", err);
-      // We do NOT redirect to window.open here to keep user in app
-      alert("Download failed. The stream is protected or network is unavailable.");
-    } finally {
+      console.warn("Direct download failed (CORS likely), trying fallback.", err);
+      
+      // Fallback: Open in new tab. User can save from there.
+      // We use a temporary anchor to force 'download' attribute attempt, though browsers ignore it for cross-origin
+      const a = document.createElement('a');
+      a.href = currentSong.audioUrl;
+      a.target = '_blank';
+      a.download = `${currentSong.title}.mp3`; // Hint
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
       setIsDownloading(false);
     }
   };
@@ -149,7 +162,7 @@ export const FullScreenPlayer: React.FC<Props> = ({
         </button>
         <div className="text-center">
           <span className="text-[10px] uppercase tracking-[0.2em] text-[#22d3ee] drop-shadow-[0_0_5px_#22d3ee]">
-            {showLyrics ? 'LYRICS' : 'NOW PLAYING'}
+            NOW PLAYING
           </span>
           <div className="font-bold text-xs truncate max-w-[150px] text-gray-300">{currentSong.album}</div>
         </div>
@@ -166,11 +179,9 @@ export const FullScreenPlayer: React.FC<Props> = ({
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col items-center justify-start px-8 pt-2 z-10 max-w-2xl mx-auto w-full relative">
         
-        {/* Center Stage: Album Art OR Lyrics */}
+        {/* Center Stage: Album Art */}
         <div className="w-full aspect-square max-w-sm mb-6 relative group perspective-1000">
           
-          {!showLyrics ? (
-            // ALBUM ART VIEW
             <div className="relative w-full h-full animate-in fade-in zoom-in duration-500">
                 <div className={`absolute inset-0 rounded-3xl bg-gradient-to-tr from-[#22d3ee] to-[#d946ef] blur-xl opacity-40 group-hover:opacity-60 transition duration-700 ${isPlaying ? 'scale-105' : 'scale-95'}`}></div>
                 <img 
@@ -186,12 +197,6 @@ export const FullScreenPlayer: React.FC<Props> = ({
                     </div>
                 )}
             </div>
-          ) : (
-            // LYRICS VIEW
-            <div className="relative w-full h-full rounded-3xl bg-black/40 backdrop-blur-md border border-white/10 overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
-                <LyricsView song={currentSong} />
-            </div>
-          )}
           
         </div>
 
@@ -220,14 +225,16 @@ export const FullScreenPlayer: React.FC<Props> = ({
            </div>
         </div>
 
-        {/* Neon Progress Bar */}
+        {/* Neon Progress Bar - Interactive */}
         <div className="w-full mb-6 group">
            <input 
               type="range" 
               min={0} 
               max={duration || 100} 
               value={progress}
-              onChange={handleSeek}
+              onChange={handleSeekChange}
+              onMouseUp={handleSeekEnd}
+              onTouchEnd={handleSeekEnd}
               className="w-full h-1.5 bg-[#2a1a35] rounded-lg appearance-none cursor-pointer accent-[#d946ef] hover:accent-[#22d3ee] transition-colors shadow-[0_0_10px_#d946ef]"
            />
            <div className="flex justify-between text-xs text-gray-400 mt-2 font-medium font-mono group-hover:text-white transition-colors">
@@ -267,7 +274,7 @@ export const FullScreenPlayer: React.FC<Props> = ({
         </div>
 
         {/* SPATIAL AUDIO & EXTRAS ROW */}
-        <div className="flex items-center justify-between w-full border-t border-white/5 pt-4 pb-8">
+        <div className="flex items-center justify-between w-full border-t border-white/5 pt-4 pb-8 px-4">
             {/* ENHANCED SPATIAL TOGGLE */}
             <button 
                 onClick={cycleSpatial} 
@@ -281,14 +288,6 @@ export const FullScreenPlayer: React.FC<Props> = ({
                <span className="text-xs font-bold tracking-widest">
                    {spatialMode === 'off' ? '8D OFF' : spatialMode.toUpperCase()}
                </span>
-            </button>
-            
-             <button 
-                onClick={() => setShowLyrics(!showLyrics)} 
-                className={`flex flex-col items-center gap-1.5 transition ${showLyrics ? 'text-[#d946ef] drop-shadow-[0_0_5px_#d946ef]' : 'text-gray-400 hover:text-white'}`}
-             >
-               <Mic2 size={22} />
-               <span className="text-[10px] font-semibold tracking-wide">LYRICS</span>
             </button>
             
             <button onClick={onToggleQueue} className="flex flex-col items-center gap-1.5 text-gray-400 hover:text-white transition">
