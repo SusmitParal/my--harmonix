@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ChevronRight, Check, User, Music2, Mic2 } from 'lucide-react';
 import { UserProfile } from '../types';
@@ -46,15 +47,15 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
               <div className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${step >= 3 ? 'bg-[#d946ef] shadow-[0_0_10px_#d946ef]' : 'bg-white/10'}`}></div>
           </div>
 
-          <div className="bg-[#1a0925]/90 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl relative overflow-hidden min-h-[450px] flex flex-col">
+          <div className="bg-[#1a0925]/90 backdrop-blur-xl border border-white/10 rounded-3xl p-6 md:p-8 shadow-2xl relative overflow-hidden h-[65vh] max-h-[600px] flex flex-col">
              
              {/* Background glow */}
              <div className="absolute top-[-50%] right-[-50%] w-64 h-64 bg-[#22d3ee] rounded-full blur-[100px] opacity-20 pointer-events-none animate-pulse"></div>
              <div className="absolute bottom-[-50%] left-[-50%] w-64 h-64 bg-[#d946ef] rounded-full blur-[100px] opacity-20 pointer-events-none animate-pulse delay-1000"></div>
 
              {step === 1 && (
-                 <div className="flex-1 flex flex-col animate-in slide-in-from-right duration-500">
-                     <div className="flex items-center gap-3 mb-6">
+                 <div className="flex-1 flex flex-col animate-in slide-in-from-right duration-500 h-full overflow-hidden">
+                     <div className="flex items-center gap-3 mb-6 flex-shrink-0">
                          <div className="p-3 bg-gradient-to-br from-[#d946ef] to-[#9d174d] rounded-2xl text-white shadow-lg"><User size={24} /></div>
                          <div>
                              <h2 className="text-2xl font-bold text-white">Who are you?</h2>
@@ -62,7 +63,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
                          </div>
                      </div>
                      
-                     <div className="space-y-5 flex-1">
+                     <div className="space-y-5 flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 pr-2">
                          <div>
                              <label className="text-[10px] text-[#d946ef] font-bold uppercase tracking-widest mb-1.5 block ml-1">Full Name</label>
                              <input 
@@ -112,7 +113,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
                      <button 
                         onClick={handleNext}
                         disabled={!profile.name || !profile.age || !profile.dob}
-                        className="w-full mt-6 bg-gradient-to-r from-[#d946ef] to-[#22d3ee] p-4 rounded-xl font-bold text-white shadow-[0_0_20px_rgba(217,70,239,0.3)] hover:shadow-[0_0_30px_rgba(217,70,239,0.5)] hover:scale-[1.02] active:scale-95 transition disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                        className="w-full mt-6 bg-gradient-to-r from-[#d946ef] to-[#22d3ee] p-4 rounded-xl font-bold text-white shadow-[0_0_20px_rgba(217,70,239,0.3)] hover:shadow-[0_0_30px_rgba(217,70,239,0.5)] hover:scale-[1.02] active:scale-95 transition disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2 flex-shrink-0"
                      >
                         Continue <ChevronRight size={20} />
                      </button>
@@ -120,8 +121,8 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
              )}
 
              {step === 2 && (
-                 <div className="flex-1 flex flex-col animate-in slide-in-from-right duration-500">
-                     <div className="flex items-center gap-3 mb-6">
+                 <div className="flex-1 flex flex-col animate-in slide-in-from-right duration-500 h-full overflow-hidden">
+                     <div className="flex items-center gap-3 mb-6 flex-shrink-0">
                          <div className="p-3 bg-gradient-to-br from-[#22d3ee] to-[#0e7490] rounded-2xl text-white shadow-lg"><Music2 size={24} /></div>
                          <div>
                              <h2 className="text-2xl font-bold text-white">Your Vibe?</h2>
@@ -129,7 +130,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
                          </div>
                      </div>
 
-                     <div className="grid grid-cols-2 gap-3 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 flex-1 content-start">
+                     <div className="grid grid-cols-2 gap-3 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 flex-1 content-start touch-pan-y overscroll-contain">
                          {LANGUAGES.map(lang => {
                              const isSelected = profile.languages.includes(lang);
                              return (
@@ -147,7 +148,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
 
                      <button 
                         onClick={handleNext}
-                        className="w-full mt-6 bg-gradient-to-r from-[#22d3ee] to-[#d946ef] p-4 rounded-xl font-bold text-white shadow-[0_0_20px_rgba(34,211,238,0.3)] hover:shadow-[0_0_30px_rgba(34,211,238,0.5)] hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2"
+                        className="w-full mt-6 bg-gradient-to-r from-[#22d3ee] to-[#d946ef] p-4 rounded-xl font-bold text-white shadow-[0_0_20px_rgba(34,211,238,0.3)] hover:shadow-[0_0_30px_rgba(34,211,238,0.5)] hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2 flex-shrink-0"
                      >
                         Next <ChevronRight size={20} />
                      </button>
@@ -155,8 +156,8 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
              )}
 
              {step === 3 && (
-                 <div className="flex-1 flex flex-col animate-in slide-in-from-right duration-500">
-                     <div className="flex items-center gap-3 mb-6">
+                 <div className="flex-1 flex flex-col animate-in slide-in-from-right duration-500 h-full overflow-hidden">
+                     <div className="flex items-center gap-3 mb-6 flex-shrink-0">
                          <div className="p-3 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl text-white shadow-lg"><Mic2 size={24} /></div>
                          <div>
                              <h2 className="text-2xl font-bold text-white">Favorite Artists</h2>
@@ -164,7 +165,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
                          </div>
                      </div>
 
-                     <div className="flex flex-wrap gap-2 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-600 content-start flex-1">
+                     <div className="flex flex-wrap gap-2 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-gray-600 content-start flex-1 touch-pan-y overscroll-contain pb-4">
                          {POPULAR_ARTISTS.map(artist => {
                              const isSelected = profile.artists.includes(artist);
                              return (
@@ -181,7 +182,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
 
                      <button 
                         onClick={handleFinish}
-                        className="w-full mt-6 bg-gradient-to-r from-[#d946ef] to-[#22d3ee] p-4 rounded-xl font-bold text-white shadow-[0_0_20px_rgba(217,70,239,0.3)] hover:shadow-[0_0_30px_rgba(217,70,239,0.5)] hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2"
+                        className="w-full mt-6 bg-gradient-to-r from-[#d946ef] to-[#22d3ee] p-4 rounded-xl font-bold text-white shadow-[0_0_20px_rgba(217,70,239,0.3)] hover:shadow-[0_0_30px_rgba(217,70,239,0.5)] hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2 flex-shrink-0"
                      >
                         Create Profile <Check size={20} />
                      </button>

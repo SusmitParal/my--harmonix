@@ -33,6 +33,8 @@ class AudioEngine {
     // BUFFERING & BACKGROUND OPTIMIZATIONS
     this.audioElement.preload = "auto"; // Preload as much as possible
     this.audioElement.setAttribute('playsinline', 'true'); // Helpful for mobile web
+    // @ts-ignore - Non-standard safari property for background smoothness
+    this.audioElement.setAttribute('x-webkit-airplay', 'allow');
     
     // Error handling: If CORS fails, retry without CORS so user still hears audio
     this.audioElement.onerror = (e) => {
@@ -114,7 +116,8 @@ class AudioEngine {
     
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     this.audioContext = new AudioContextClass({
-        latencyHint: 'playback' // Optimization: prefers smooth playback over low latency
+        latencyHint: 'playback', // Optimization: prefers smooth playback over low latency
+        sampleRate: 44100 // Standardize
     });
     
     // Create Nodes
@@ -132,7 +135,7 @@ class AudioEngine {
     // 2. Pre-Amp Gain (Volume Boost)
     // We set this > 1.0 to increase volume beyond standard 100%
     this.preAmpGain = this.audioContext.createGain();
-    this.preAmpGain.gain.value = 1.6; // 160% Volume Boost
+    this.preAmpGain.gain.value = 1.0; // Start at 1.0 to avoid burst
 
     // 3. Compressor (Safety to prevent clipping/distortion from boost)
     this.compressorNode = this.audioContext.createDynamicsCompressor();
@@ -148,6 +151,7 @@ class AudioEngine {
     // 5. Analyser (Visualizer)
     this.analyserNode = this.audioContext.createAnalyser();
     this.analyserNode.fftSize = 256;
+    this.analyserNode.smoothingTimeConstant = 0.8; // Smoother visualizer
 
     // Create 6-band EQ
     const eqFreqs = [60, 200, 500, 1000, 4000, 10000];
@@ -159,48 +163,59 @@ class AudioEngine {
       return node;
     });
 
-    // Connect Chain: 
-    // Source -> EQ -> Panner -> PreAmp(Boost) -> Compressor -> MasterGain -> Analyser -> Destination
-    if (this.sourceNode) {
-        let currentNode: AudioNode = this.sourceNode;
-        
-        // Connect EQs in series
-        this.eqNodes.forEach(node => {
-            currentNode.connect(node);
-            currentNode = node;
-        });
-
-        // Spatial
-        currentNode.connect(this.pannerNode);
-        
-        // Boost & Compress
-        this.pannerNode.connect(this.preAmpGain);
-        this.preAmpGain.connect(this.compressorNode);
-        
-        // Output control
-        this.compressorNode.connect(this.gainNode);
-        this.gainNode.connect(this.analyserNode);
-        this.analyserNode.connect(this.audioContext.destination);
-    }
-
+    this.rebuildGraph();
     this.startSpatialLoop();
   }
 
+  // Reconnects nodes based on current settings
+  private rebuildGraph() {
+      if (!this.sourceNode || !this.audioContext || !this.pannerNode || !this.preAmpGain || !this.compressorNode || !this.gainNode || !this.analyserNode) return;
+
+      // Disconnect everything
+      this.sourceNode.disconnect();
+      this.eqNodes.forEach(n => n.disconnect());
+      this.pannerNode.disconnect();
+      this.preAmpGain.disconnect();
+      this.compressorNode.disconnect();
+      this.gainNode.disconnect();
+      this.analyserNode.disconnect();
+
+      // Start Chain
+      let currentNode: AudioNode = this.sourceNode;
+
+      // 1. EQ Chain (Always active)
+      this.eqNodes.forEach(node => {
+          currentNode.connect(node);
+          currentNode = node;
+      });
+
+      // 2. Spatial Node (Bypass if OFF for performance smoothness)
+      if (this.currentMode !== 'off') {
+          currentNode.connect(this.pannerNode);
+          currentNode = this.pannerNode;
+      }
+
+      // 3. Dynamics Chain
+      currentNode.connect(this.preAmpGain);
+      this.preAmpGain.connect(this.compressorNode);
+      this.compressorNode.connect(this.gainNode);
+      
+      // 4. Output
+      this.gainNode.connect(this.analyserNode);
+      this.analyserNode.connect(this.audioContext.destination);
+  }
+
   async loadTrack(url: string) {
-    // SMART TRANSITION:
-    // If audio is currently playing and hasn't ended naturally, fade it out smoothly.
+    // SMART TRANSITION: Smooth Fade Out
     if (this.audioContext && this.gainNode && !this.audioElement.paused && !this.audioElement.ended) {
          try {
-             // Quick Fade Out (200ms)
              const currTime = this.audioContext.currentTime;
              this.gainNode.gain.cancelScheduledValues(currTime);
              this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currTime);
-             this.gainNode.gain.linearRampToValueAtTime(0.01, currTime + 0.2);
-             
-             // Wait for fade
-             await new Promise(r => setTimeout(r, 200));
+             this.gainNode.gain.linearRampToValueAtTime(0.01, currTime + 0.3); // Slower fade out (300ms)
+             await new Promise(r => setTimeout(r, 300));
          } catch (e) {
-             // Ignore fade errors
+             // Ignore
          }
     }
 
@@ -209,10 +224,10 @@ class AudioEngine {
       await this.audioContext.resume();
     }
     
-    // Reset volume/gain for new track
+    // Reset volume for new track (Prepare for Fade In)
     if (this.gainNode && this.audioContext) {
         this.gainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-        this.gainNode.gain.setValueAtTime(1, this.audioContext.currentTime);
+        this.gainNode.gain.setValueAtTime(0.01, this.audioContext.currentTime); // Start silent
     }
 
     // Reset to anonymous for each new track to try and get Visualizer working
@@ -226,18 +241,46 @@ class AudioEngine {
     if (this.audioContext?.state === 'suspended') {
         await this.audioContext.resume();
     }
-    return this.audioElement.play();
+    
+    const playPromise = this.audioElement.play();
+    
+    // Smooth Fade In
+    if (this.gainNode && this.audioContext) {
+        const currTime = this.audioContext.currentTime;
+        this.gainNode.gain.cancelScheduledValues(currTime);
+        this.gainNode.gain.setValueAtTime(0.01, currTime);
+        this.gainNode.gain.exponentialRampToValueAtTime(1.0, currTime + 0.8); // 800ms Fade In
+    }
+    
+    return playPromise;
   }
 
   pause() {
-    this.audioElement.pause();
+    // Smooth fade out on pause
+    if (this.gainNode && this.audioContext) {
+        const currTime = this.audioContext.currentTime;
+        this.gainNode.gain.cancelScheduledValues(currTime);
+        this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currTime);
+        this.gainNode.gain.linearRampToValueAtTime(0.01, currTime + 0.2);
+        
+        setTimeout(() => {
+            this.audioElement.pause();
+            // Reset gain for next play
+            if(this.gainNode && this.audioContext) {
+                 this.gainNode.gain.setValueAtTime(1, this.audioContext.currentTime);
+            }
+        }, 200);
+    } else {
+        this.audioElement.pause();
+    }
   }
 
   setVolume(value: number) {
-    if (this.gainNode) {
-      this.gainNode.gain.value = value;
+    if (this.preAmpGain) {
+      // Use preAmp for volume to allow boosting up to 160%
+      // Value 0-1 mapped to 0-1.6
+      this.preAmpGain.gain.value = value * 1.6;
     }
-    // We don't set this.audioElement.volume because we control gain via WebAudio
   }
 
   seek(time: number) {
@@ -265,6 +308,7 @@ class AudioEngine {
       this.pannerNode.positionY.value = 0;
       this.pannerNode.positionZ.value = 0;
     }
+    this.rebuildGraph(); // Reconfigure path for performance
   }
 
   setEQBand(index: number, gain: number) {
