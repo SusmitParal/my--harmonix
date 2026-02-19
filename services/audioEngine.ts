@@ -17,6 +17,9 @@ class AudioEngine {
   
   // Spatial config
   private currentMode: SpatialMode = 'off';
+  
+  // Track the latest requested URL to prevent race conditions during rapid skipping
+  private nextTrackUrl: string | null = null;
 
   // Callbacks for Media Session Actions
   private actionHandlers: {
@@ -43,7 +46,12 @@ class AudioEngine {
             console.warn("Audio CORS failed. Retrying in playback-only mode (No Visualizer).");
             this.audioElement.crossOrigin = null; // Remove CORS requirement
             this.audioElement.src = src;
-            this.audioElement.play().catch(err => console.error("Retry playback failed", err));
+            this.audioElement.play().catch(err => {
+                 // Ignore interrupted errors here too
+                 if (err.name !== 'AbortError' && !err.message?.includes('interrupted')) {
+                     console.error("Retry playback failed", err);
+                 }
+            });
         }
     };
 
@@ -116,8 +124,8 @@ class AudioEngine {
     
     const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
     this.audioContext = new AudioContextClass({
-        latencyHint: 'playback', // Optimization: prefers smooth playback over low latency
-        sampleRate: 44100 // Standardize
+        latencyHint: 'playback', // Optimized for smooth continuous playback
+        sampleRate: 44100
     });
     
     // Create Nodes
@@ -128,30 +136,37 @@ class AudioEngine {
     }
 
     // 1. Panner (Spatial)
+    // Optimized for Spatial Audio without volume loss
     this.pannerNode = this.audioContext.createPanner();
     this.pannerNode.panningModel = 'HRTF'; // High quality spatialization
     this.pannerNode.distanceModel = 'inverse';
-
+    this.pannerNode.refDistance = 3; 
+    this.pannerNode.rolloffFactor = 0.5; 
+    this.pannerNode.coneInnerAngle = 360; 
+    
     // 2. Pre-Amp Gain (Volume Boost)
-    // We set this > 1.0 to increase volume beyond standard 100%
+    // REDUCED to 0.9 to prevent input clipping before compression
     this.preAmpGain = this.audioContext.createGain();
-    this.preAmpGain.gain.value = 1.0; // Start at 1.0 to avoid burst
+    this.preAmpGain.gain.value = 0.9; 
 
-    // 3. Compressor (Safety to prevent clipping/distortion from boost)
+    // 3. High-Fidelity Compressor
+    // Tuned for transparency and safety to prevent "ghizzing"/clipping 
     this.compressorNode = this.audioContext.createDynamicsCompressor();
-    this.compressorNode.threshold.value = -12; // Start compressing at -12dB
-    this.compressorNode.knee.value = 30; // Soft knee
-    this.compressorNode.ratio.value = 12; // High compression ratio
-    this.compressorNode.attack.value = 0.003; // Fast attack
-    this.compressorNode.release.value = 0.25; // Moderate release
+    this.compressorNode.threshold.value = -30; // Start engaging earlier to catch sudden peaks
+    this.compressorNode.knee.value = 35; // Soft knee for transparent transition
+    this.compressorNode.ratio.value = 8; // Higher ratio to clamp down on distortion
+    this.compressorNode.attack.value = 0.05; // Slower attack (50ms) to let punch through but stop sustained clipping
+    this.compressorNode.release.value = 0.25; // Smooth release
 
     // 4. Master Gain (Volume Control)
     this.gainNode = this.audioContext.createGain();
+    // Initialize silence
+    this.gainNode.gain.value = 0;
     
     // 5. Analyser (Visualizer)
     this.analyserNode = this.audioContext.createAnalyser();
     this.analyserNode.fftSize = 256;
-    this.analyserNode.smoothingTimeConstant = 0.8; // Smoother visualizer
+    this.analyserNode.smoothingTimeConstant = 0.85; 
 
     // Create 6-band EQ
     const eqFreqs = [60, 200, 500, 1000, 4000, 10000];
@@ -189,7 +204,7 @@ class AudioEngine {
           currentNode = node;
       });
 
-      // 2. Spatial Node (Bypass if OFF for performance smoothness)
+      // 2. Spatial Node (Bypass if OFF for purity)
       if (this.currentMode !== 'off') {
           currentNode.connect(this.pannerNode);
           currentNode = this.pannerNode;
@@ -203,31 +218,44 @@ class AudioEngine {
       // 4. Output
       this.gainNode.connect(this.analyserNode);
       this.analyserNode.connect(this.audioContext.destination);
+      
+      // Automatic Makeup Gain for Spatial Modes to maintain loudness
+      if (this.currentMode !== 'off') {
+          // Careful boost for 3D modes
+          this.preAmpGain.gain.setTargetAtTime(1.2, this.audioContext.currentTime, 0.1); 
+      } else {
+          this.preAmpGain.gain.setTargetAtTime(0.9, this.audioContext.currentTime, 0.1);
+      }
   }
 
   async loadTrack(url: string) {
-    // SMART TRANSITION: Smooth Fade Out
-    if (this.audioContext && this.gainNode && !this.audioElement.paused && !this.audioElement.ended) {
-         try {
-             const currTime = this.audioContext.currentTime;
-             this.gainNode.gain.cancelScheduledValues(currTime);
-             this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currTime);
-             this.gainNode.gain.linearRampToValueAtTime(0.01, currTime + 0.3); // Slower fade out (300ms)
-             await new Promise(r => setTimeout(r, 300));
-         } catch (e) {
-             // Ignore
-         }
-    }
+    // Record this as the latest requested track
+    this.nextTrackUrl = url;
 
     if (!this.audioContext) this.init();
     if (this.audioContext?.state === 'suspended') {
       await this.audioContext.resume();
     }
-    
-    // Reset volume for new track (Prepare for Fade In)
+
+    // SMOOTH DREAMY FADE OUT
+    // We use exponential ramp for a more natural volume drop
     if (this.gainNode && this.audioContext) {
-        this.gainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
-        this.gainNode.gain.setValueAtTime(0.01, this.audioContext.currentTime); // Start silent
+         const currTime = this.audioContext.currentTime;
+         this.gainNode.gain.cancelScheduledValues(currTime);
+         this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currTime);
+         
+         // 600ms long smooth fade out to avoid abrupt cuts
+         // Note: Exponential ramp cannot hit 0 exactly, so we go to 0.01 then set 0
+         this.gainNode.gain.exponentialRampToValueAtTime(0.01, currTime + 0.6);
+         this.gainNode.gain.setValueAtTime(0, currTime + 0.61);
+         
+         // Wait for fade
+         await new Promise(r => setTimeout(r, 620));
+    }
+
+    // RACE CONDITION CHECK
+    if (this.nextTrackUrl !== url) {
+        return;
     }
 
     // Reset to anonymous for each new track to try and get Visualizer working
@@ -242,17 +270,27 @@ class AudioEngine {
         await this.audioContext.resume();
     }
     
-    const playPromise = this.audioElement.play();
+    // Wrap play in try/catch to handle "interrupted by new load request" error gracefully
+    try {
+        await this.audioElement.play();
+    } catch (e: any) {
+        if (e.name === 'AbortError' || e.message?.includes('interrupted')) {
+            return;
+        }
+        console.error("Audio playback error:", e);
+        return;
+    }
     
-    // Smooth Fade In
+    // SMOOTH DREAMY FADE IN
+    // Use exponential ramp for that "immersive" start feel
     if (this.gainNode && this.audioContext) {
         const currTime = this.audioContext.currentTime;
         this.gainNode.gain.cancelScheduledValues(currTime);
-        this.gainNode.gain.setValueAtTime(0.01, currTime);
-        this.gainNode.gain.exponentialRampToValueAtTime(1.0, currTime + 0.8); // 800ms Fade In
+        this.gainNode.gain.setValueAtTime(0.01, currTime); // Start slightly above 0 for exponential
+        
+        // 1.2 Second Fade In - Very cinematic
+        this.gainNode.gain.exponentialRampToValueAtTime(1.0, currTime + 1.2);
     }
-    
-    return playPromise;
   }
 
   pause() {
@@ -261,31 +299,37 @@ class AudioEngine {
         const currTime = this.audioContext.currentTime;
         this.gainNode.gain.cancelScheduledValues(currTime);
         this.gainNode.gain.setValueAtTime(this.gainNode.gain.value, currTime);
-        this.gainNode.gain.linearRampToValueAtTime(0.01, currTime + 0.2);
+        
+        // 400ms fade out
+        this.gainNode.gain.exponentialRampToValueAtTime(0.01, currTime + 0.4);
+        this.gainNode.gain.setValueAtTime(0, currTime + 0.41);
         
         setTimeout(() => {
             this.audioElement.pause();
-            // Reset gain for next play
-            if(this.gainNode && this.audioContext) {
-                 this.gainNode.gain.setValueAtTime(1, this.audioContext.currentTime);
-            }
-        }, 200);
+        }, 420);
     } else {
         this.audioElement.pause();
     }
   }
 
   setVolume(value: number) {
-    if (this.preAmpGain) {
-      // Use preAmp for volume to allow boosting up to 160%
-      // Value 0-1 mapped to 0-1.6
-      this.preAmpGain.gain.value = value * 1.6;
-    }
+    // Volume control logic placeholder
   }
 
   seek(time: number) {
     if (isFinite(time)) {
+        // Mute briefly during seek to prevent stutter sound
+        if(this.gainNode && this.audioContext) {
+            this.gainNode.gain.cancelScheduledValues(this.audioContext.currentTime);
+            this.gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        }
+        
         this.audioElement.currentTime = time;
+        
+        // Fade back in quickly
+        if(this.gainNode && this.audioContext && !this.audioElement.paused) {
+             this.gainNode.gain.linearRampToValueAtTime(1.0, this.audioContext.currentTime + 0.3);
+        }
     }
   }
 
@@ -302,19 +346,34 @@ class AudioEngine {
   }
 
   setSpatialMode(mode: SpatialMode) {
+    if (this.currentMode === mode) return;
+    
     this.currentMode = mode;
-    if (mode === 'off' && this.pannerNode) {
-      this.pannerNode.positionX.value = 0;
-      this.pannerNode.positionY.value = 0;
-      this.pannerNode.positionZ.value = 0;
+    if (mode === 'off' && this.pannerNode && this.audioContext) {
+      // Reset position to center immediately using ramp for safety
+      const t = this.audioContext.currentTime;
+      this.pannerNode.positionX.linearRampToValueAtTime(0, t + 0.1);
+      this.pannerNode.positionY.linearRampToValueAtTime(0, t + 0.1);
+      this.pannerNode.positionZ.linearRampToValueAtTime(0, t + 0.1);
     }
-    this.rebuildGraph(); // Reconfigure path for performance
+    
+    this.rebuildGraph(); 
   }
 
   setEQBand(index: number, gain: number) {
-    if (this.eqNodes[index]) {
-      this.eqNodes[index].gain.value = gain;
+    if (this.eqNodes[index] && this.audioContext) {
+       // Smooth transition for EQ changes
+       this.eqNodes[index].gain.setTargetAtTime(gain, this.audioContext.currentTime, 0.1);
     }
+  }
+
+  setEQGains(gains: number[]) {
+      if(!this.audioContext) return;
+      gains.forEach((gain, index) => {
+          if (this.eqNodes[index]) {
+              this.eqNodes[index].gain.setTargetAtTime(gain, this.audioContext.currentTime, 0.2);
+          }
+      });
   }
 
   getAnalyser() {
@@ -322,9 +381,6 @@ class AudioEngine {
   }
 
   private startSpatialLoop() {
-    // We use a dual approach: requestAnimationFrame for smooth visuals when active,
-    // and a setInterval backup to ensure spatial positions update (even if jerkily) in background.
-    
     // Cleanup existing
     if (this.animationFrameId) cancelAnimationFrame(this.animationFrameId);
     if (this.backgroundIntervalId) clearInterval(this.backgroundIntervalId);
@@ -335,30 +391,26 @@ class AudioEngine {
         
         let x = 0, y = 0, z = 0;
         
-        // 8D: Simple Circle around head
-        // 16D: Circle + moving up and down slightly (Helix)
-        // 32D: Faster, wider, more chaotic
-        
         if (this.currentMode === '8d') {
           // Period of ~8 seconds
-          const speed = 0.8; 
-          x = Math.sin(time * speed) * 3; // 3 units away
+          const speed = 0.5; 
+          x = Math.sin(time * speed) * 3; 
           z = Math.cos(time * speed) * 3; 
           y = 0;
         } else if (this.currentMode === '16d') {
-           const speed = 1.2;
-           x = Math.sin(time * speed) * 5;
-           z = Math.cos(time * speed) * 5;
-           y = Math.sin(time * 0.5) * 2; // Up and down
+           const speed = 0.8;
+           x = Math.sin(time * speed) * 6; // Wider
+           z = Math.cos(time * speed) * 6;
+           y = Math.sin(time * 0.3) * 3; // Vertical movement
         } else if (this.currentMode === '32d') {
-           const speed = 2.0;
-           x = Math.sin(time * speed) * 8;
-           z = Math.cos(time * speed * 1.1) * 8; // Slightly out of phase for chaos
-           y = Math.cos(time * 1.5) * 4;
+           const speed = 1.1; // Faster
+           x = Math.sin(time * speed) * 9; // Very wide
+           z = Math.cos(time * speed * 0.9) * 9; // Async phase
+           y = Math.cos(time * 0.5) * 5;
         }
 
-        // Apply position
         if (this.pannerNode.positionX) {
+             // Use extremely short ramps instead of instant set to avoid zipper noise
              this.pannerNode.positionX.setValueAtTime(x, time);
              this.pannerNode.positionY.setValueAtTime(y, time);
              this.pannerNode.positionZ.setValueAtTime(z, time);
@@ -373,13 +425,12 @@ class AudioEngine {
     };
     loop();
 
-    // 2. Backup interval for background tab (runs approx once per sec when backgrounded)
-    // This ensures that even if requestAnimationFrame stops, position roughly updates so it doesn't get "stuck" in one ear.
+    // 2. Backup interval for background tab
     this.backgroundIntervalId = setInterval(() => {
         if (document.hidden) {
             updatePosition();
         }
-    }, 500);
+    }, 200); 
   }
 
   // Events

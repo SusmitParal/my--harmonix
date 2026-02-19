@@ -1,24 +1,20 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import { Song, ArtistInfo } from "../types";
+
+import { GoogleGenAI, Type } from "@google/genai";
+import { Song, Playlist, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
-// Vite uses import.meta.env instead of process.env
-// The variable MUST be prefixed with VITE_ in your .env or Vercel settings
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-
-// Initialize the client
-const genAI = new GoogleGenerativeAI(API_KEY || "");
+// Initialize the client with the correct API Key parameter object
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const generateLyrics = async (song: string, artist: string): Promise<string> => {
-  if (!API_KEY) return "Lyrics unavailable (API Key missing).";
+  if (!process.env.API_KEY) return "Lyrics unavailable (API Key missing).";
   
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    const prompt = `Generate synchronized style lyrics for the song "${song}" by "${artist}". Format nicely with stanzas.`;
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text() || "Lyrics not found.";
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Generate synchronized style lyrics for the song "${song}" by "${artist}". Format nicely with stanzas.`,
+    });
+    return response.text || "Lyrics not found.";
   } catch (e) {
     console.error("Gemini Error:", e);
     return "Could not load lyrics.";
@@ -26,34 +22,39 @@ export const generateLyrics = async (song: string, artist: string): Promise<stri
 };
 
 export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promise<Song[]> => {
-    if (!API_KEY || queue.length < 3) return [...queue].sort(() => Math.random() - 0.5);
+    if (!process.env.API_KEY || queue.length < 3) return queue.sort(() => Math.random() - 0.5);
 
     try {
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-1.5-flash",
-            generationConfig: { responseMimeType: "application/json" }
-        });
-
         const songList = queue.map(s => `${s.title} - ${s.artist}`).join('\n');
-        const prompt = `I am listening to "${currentSong.title}" by "${currentSong.artist}". 
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `I am listening to "${currentSong.title}" by "${currentSong.artist}". 
             Here is a list of upcoming songs:
             ${songList}
             
             Reorder this list to create the best musical flow/vibe continuing from the current song. 
-            Return the song titles in the new order as a JSON array of strings.`;
+            Return the song titles in the new order as a JSON array of strings.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                }
+            }
+        });
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const orderedTitles = JSON.parse(response.text() || "[]");
+        const orderedTitles = JSON.parse(response.text || "[]");
         
+        // Reconstruct queue based on returned titles
         const newQueue: Song[] = [];
         orderedTitles.forEach((title: string) => {
-            const found = queue.find(s => title.toLowerCase().includes(title.toLowerCase()) || title.toLowerCase().includes(s.title.toLowerCase()));
+            const found = queue.find(s => title.includes(s.title) || s.title.includes(title));
             if (found && !newQueue.includes(found)) {
                 newQueue.push(found);
             }
         });
         
+        // Add any leftovers that weren't matched
         queue.forEach(s => {
             if (!newQueue.includes(s)) newQueue.push(s);
         });
@@ -61,51 +62,64 @@ export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promi
         return newQueue;
     } catch (e) {
         console.error("AI Shuffle Error:", e);
-        return [...queue].sort(() => Math.random() - 0.5);
+        return queue.sort(() => Math.random() - 0.5);
     }
 };
 
 export const generateVibeQuery = async (currentSong: Song, languages: string[]): Promise<string> => {
-    if (!API_KEY) return `${currentSong.artist} similar songs`;
+    if (!process.env.API_KEY) return `${currentSong.artist} similar songs`;
 
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         const langStr = languages.length > 0 ? languages.join(", ") : "Hindi, English";
-        const prompt = `I just finished listening to "${currentSong.title}" by "${currentSong.artist}". 
-            Suggest a VERY short search query (max 4 words) to find the next song that matches this mood/vibe.
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `I just finished listening to "${currentSong.title}" by "${currentSong.artist}". 
+            Suggest a VERY short search query (max 4 words) to find the next song that matches this mood/vibe (e.g. late night drive, party, sad, upbeat).
             CRITICAL: The song MUST be in one of these languages: ${langStr}.
-            Return ONLY the search query string. Do not include quotes.`;
-
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        return response.text()?.trim() || `${currentSong.artist} radio`;
+            Return ONLY the search query string. Do not include quotes.`,
+        });
+        return response.text?.trim() || `${currentSong.artist} radio`;
     } catch (e) {
         return `${currentSong.artist} mix`;
     }
 };
 
 export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
-  if (!API_KEY) {
+  if (!process.env.API_KEY) {
       return { 
           name: artistName, 
           bio: "Bio unavailable in demo mode.", 
           imageUrl: `https://picsum.photos/400/400?random=${Math.random()}`,
-          topTracks: []
+          topTracks: [] // Empty top tracks for demo fallback
       };
   }
 
   try {
-    const model = genAI.getGenerativeModel({ 
-        model: "gemini-1.5-flash",
-        generationConfig: { responseMimeType: "application/json" }
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: `Provide a short biography (under 100 words) for music artist "${artistName}" and a list of their 3 top hits. Return JSON.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            bio: { type: Type.STRING },
+            topHits: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        title: { type: Type.STRING },
+                        album: { type: Type.STRING }
+                    }
+                }
+            }
+          }
+        }
+      }
     });
 
-    const prompt = `Provide a short biography (under 100 words) for music artist "${artistName}" and a list of their 3 top hits. Return JSON format with "bio" and "topHits" (title/album).`;
-
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const data = JSON.parse(response.text() || "{}");
-    
+    const data = JSON.parse(response.text || "{}");
     const topTracks: Song[] = (data.topHits || []).map((hit: any, i: number) => ({
         id: `artist_top_${i}_${Date.now()}`,
         title: hit.title,
@@ -132,5 +146,36 @@ export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
   }
 }
 
-export const generateRecommendations = async (context: string): Promise<Song[]> => [];
-export const searchMusic = async (query: string): Promise<Song[]> => [];
+export const getAIEqualizerSettings = async (song: string, artist: string): Promise<number[]> => {
+    if (!process.env.API_KEY) return [0,0,0,0,0,0];
+    try {
+        const response = await ai.models.generateContent({
+             model: 'gemini-3-flash-preview',
+             contents: `Suggest a 6-band equalizer setting (frequencies: 60Hz, 200Hz, 500Hz, 1kHz, 4kHz, 10kHz) for the song "${song}" by "${artist}". 
+             Values must be between -8 and 8 (dB). 
+             Analyze the song's genre (e.g., Bass Heavy for Trap, Mid-boost for Acoustic, V-Shape for Pop) and return the optimal dB gains.
+             
+             Return ONLY a JSON array of 6 integers. Example: [4, 2, 0, -2, 2, 4]`,
+             config: {
+                responseMimeType: "application/json",
+                 responseSchema: {
+                    type: Type.ARRAY,
+                    items: { type: Type.NUMBER }
+                }
+             }
+        });
+        const gains = JSON.parse(response.text || "[0,0,0,0,0,0]");
+        return (Array.isArray(gains) && gains.length === 6) ? gains : [0,0,0,0,0,0];
+    } catch (e) {
+        console.error("AI EQ Error:", e);
+        return [0,0,0,0,0,0]; // Flat as fallback
+    }
+}
+
+export const generateRecommendations = async (context: string): Promise<Song[]> => {
+  return []; // Simplified for stability
+};
+
+export const searchMusic = async (query: string): Promise<Song[]> => {
+   return []; // Simplified for stability
+}

@@ -6,11 +6,12 @@ import { LANGUAGES, POPULAR_ARTISTS } from '../constants';
 
 interface Props {
   onComplete: (profile: UserProfile) => void;
+  initialData?: UserProfile | null;
 }
 
-export const Onboarding: React.FC<Props> = ({ onComplete }) => {
+export const Onboarding: React.FC<Props> = ({ onComplete, initialData }) => {
   const [step, setStep] = useState(1);
-  const [profile, setProfile] = useState<UserProfile>({
+  const [profile, setProfile] = useState<UserProfile>(initialData || {
     name: '',
     age: '',
     dob: '',
@@ -58,8 +59,8 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
                      <div className="flex items-center gap-3 mb-6 flex-shrink-0">
                          <div className="p-3 bg-gradient-to-br from-[#d946ef] to-[#9d174d] rounded-2xl text-white shadow-lg"><User size={24} /></div>
                          <div>
-                             <h2 className="text-2xl font-bold text-white">Who are you?</h2>
-                             <p className="text-gray-400 text-sm">Let's personalize your vibe.</p>
+                             <h2 className="text-2xl font-bold text-white">{initialData ? 'Edit Profile' : 'Who are you?'}</h2>
+                             <p className="text-gray-400 text-sm">{initialData ? 'Update your personal details' : "Let's personalize your vibe."}</p>
                          </div>
                      </div>
                      
@@ -184,7 +185,7 @@ export const Onboarding: React.FC<Props> = ({ onComplete }) => {
                         onClick={handleFinish}
                         className="w-full mt-6 bg-gradient-to-r from-[#d946ef] to-[#22d3ee] p-4 rounded-xl font-bold text-white shadow-[0_0_20px_rgba(217,70,239,0.3)] hover:shadow-[0_0_30px_rgba(217,70,239,0.5)] hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2 flex-shrink-0"
                      >
-                        Create Profile <Check size={20} />
+                        {initialData ? 'Update Profile' : 'Create Profile'} <Check size={20} />
                      </button>
                  </div>
              )}

@@ -1,4 +1,5 @@
 
+
 import { Song, UserProfile } from '../types';
 import { DEMO_TRACK_URL } from '../constants';
 
@@ -69,14 +70,13 @@ async function fetchFromSaavn(query: string, limit = 10): Promise<Song[]> {
 
         let bestAudio = '';
         if (Array.isArray(track.downloadUrl)) {
-             // OPTIMIZATION: Prioritize 160kbps for smoother playback/less buffering
+             // OPTIMIZATION: Prioritize 320kbps (High Quality) as requested
              const q320 = track.downloadUrl.find((u: any) => u.quality === '320kbps' || u.link?.includes('320') || u.url?.includes('320'));
              const q160 = track.downloadUrl.find((u: any) => u.quality === '160kbps' || u.link?.includes('160') || u.url?.includes('160'));
              const q96 = track.downloadUrl.find((u: any) => u.quality === '96kbps' || u.link?.includes('96') || u.url?.includes('96'));
              
-             // Prefer 160 (Standard) -> 320 (High) -> 96 (Saver)
-             // 160kbps is the sweet spot for mobile streaming without buffering
-             const selected = q160 || q320 || q96 || track.downloadUrl[track.downloadUrl.length - 1];
+             // High Quality Priority
+             const selected = q320 || q160 || q96 || track.downloadUrl[track.downloadUrl.length - 1];
              bestAudio = selected?.link || selected?.url || '';
         } else if (typeof track.downloadUrl === 'string') {
              bestAudio = track.downloadUrl;
@@ -97,7 +97,7 @@ async function fetchFromSaavn(query: string, limit = 10): Promise<Song[]> {
             duration: parseInt(track.duration) || 180,
             audioUrl: bestAudio || DEMO_TRACK_URL,
             previewUrl: bestAudio, 
-            quality: 'Standard (160kbps)'
+            quality: 'High Definition (320kbps)'
         };
     });
   } catch (e) {

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChevronDown, Heart, Shuffle, SkipBack, Play, Pause, SkipForward, Repeat, 
   Layers, Download, ListMusic, Clock, MonitorSpeaker, Sparkles, Loader2, Repeat1,
-  Headphones
+  Headphones, ExternalLink
 } from 'lucide-react';
 import { Song, SpatialMode, ArtistInfo, ShuffleMode, RepeatMode } from '../types';
 import { audioEngine } from '../services/audioEngine';
@@ -18,19 +18,23 @@ interface Props {
   onClose: () => void;
   isLiked: boolean;
   onToggleLike: () => void;
-  onToggleLyrics: () => void; // Deprecated but kept for signature compatibility
+  onToggleLyrics: () => void; 
   onToggleQueue: () => void;
   
   shuffleMode: ShuffleMode;
   repeatMode: RepeatMode;
   onToggleShuffle: () => void;
   onToggleRepeat: () => void;
+  
+  aiAutoEq: boolean;
+  onToggleAiAutoEq: () => void;
 }
 
 export const FullScreenPlayer: React.FC<Props> = ({
   currentSong, isPlaying, onPlayPause, onNext, onPrev, onClose,
   isLiked, onToggleLike, onToggleQueue,
-  shuffleMode, repeatMode, onToggleShuffle, onToggleRepeat
+  shuffleMode, repeatMode, onToggleShuffle, onToggleRepeat,
+  aiAutoEq, onToggleAiAutoEq
 }) => {
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -71,14 +75,9 @@ export const FullScreenPlayer: React.FC<Props> = ({
     setIsDragging(false);
   };
 
-  const cycleSpatial = () => {
-    const modes: SpatialMode[] = ['off', '8d', '16d', '32d'];
-    const nextIdx = (modes.indexOf(spatialMode) + 1) % modes.length;
-    const nextMode = modes[nextIdx];
-    
-    // Apply IMMEDIATELY
-    setSpatialMode(nextMode);
-    audioEngine.setSpatialMode(nextMode);
+  const handleSpatialSelect = (mode: SpatialMode) => {
+    setSpatialMode(mode);
+    audioEngine.setSpatialMode(mode);
   };
 
   const handleDownload = async (e: React.MouseEvent) => {
@@ -87,35 +86,27 @@ export const FullScreenPlayer: React.FC<Props> = ({
 
     setIsDownloading(true);
     
-    // Strategy: Try Blob fetch (cleanest). Fallback to direct link (works for CORS restricted).
+    // Improved Download Logic with fallback
     try {
-      const response = await fetch(currentSong.audioUrl);
-      if (!response.ok) throw new Error("Network response was not ok");
-      
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${currentSong.title} - ${currentSong.artist}.mp3`;
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      setIsDownloading(false);
+        const response = await fetch(currentSong.audioUrl);
+        if (!response.ok) throw new Error("Network response was not ok");
+        
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${currentSong.title} - ${currentSong.artist}.mp3`;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        setIsDownloading(false);
     } catch (err) {
-      console.warn("Direct download failed (CORS likely), trying fallback.", err);
-      
-      // Fallback: Open in new tab. User can save from there.
-      // We use a temporary anchor to force 'download' attribute attempt, though browsers ignore it for cross-origin
-      const a = document.createElement('a');
-      a.href = currentSong.audioUrl;
-      a.target = '_blank';
-      a.download = `${currentSong.title}.mp3`; // Hint
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setIsDownloading(false);
+        console.warn("Direct download blocked by CORS. Using fallback mechanism.");
+        // Fallback: Force new window. User can then "Save As".
+        window.open(currentSong.audioUrl, '_blank');
+        setIsDownloading(false);
     }
   };
 
@@ -139,7 +130,12 @@ export const FullScreenPlayer: React.FC<Props> = ({
 
   return (
     <div className="fixed inset-0 z-[80] bg-[#0f0518] flex flex-col animate-in slide-in-from-bottom duration-300 overflow-hidden">
-      <EqualizerModal isOpen={showEq} onClose={() => setShowEq(false)} />
+      <EqualizerModal 
+          isOpen={showEq} 
+          onClose={() => setShowEq(false)} 
+          aiAutoEq={aiAutoEq}
+          onToggleAiAutoEq={onToggleAiAutoEq}
+      />
 
       {/* Ambient Background */}
       <div 
@@ -170,8 +166,9 @@ export const FullScreenPlayer: React.FC<Props> = ({
             <button onClick={cycleTimer} className={`p-2 hover:bg-white/10 rounded-full transition ${timerMinutes ? 'text-[#22d3ee]' : 'text-gray-400'}`}>
                 <Clock size={22} />
             </button>
-            <button onClick={() => setShowEq(true)} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white">
-                <MonitorSpeaker size={22} />
+            <button onClick={() => setShowEq(true)} className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white relative">
+                <MonitorSpeaker size={22} className={aiAutoEq ? "text-[#d946ef]" : ""} />
+                {aiAutoEq && <span className="absolute top-2 right-2 w-2 h-2 bg-[#d946ef] rounded-full animate-pulse"></span>}
             </button>
         </div>
       </div>
@@ -274,21 +271,23 @@ export const FullScreenPlayer: React.FC<Props> = ({
         </div>
 
         {/* SPATIAL AUDIO & EXTRAS ROW */}
-        <div className="flex items-center justify-between w-full border-t border-white/5 pt-4 pb-8 px-4">
-            {/* ENHANCED SPATIAL TOGGLE */}
-            <button 
-                onClick={cycleSpatial} 
-                className={`flex items-center gap-2 px-4 py-2 rounded-full border transition-all ${
-                    spatialMode !== 'off' 
-                    ? 'bg-[#22d3ee]/10 border-[#22d3ee] text-[#22d3ee] shadow-[0_0_10px_rgba(34,211,238,0.3)]' 
-                    : 'bg-white/5 border-transparent text-gray-400 hover:text-white hover:bg-white/10'
-                }`}
-            >
-               <Layers size={18} />
-               <span className="text-xs font-bold tracking-widest">
-                   {spatialMode === 'off' ? '8D OFF' : spatialMode.toUpperCase()}
-               </span>
-            </button>
+        <div className="flex items-center justify-between w-full border-t border-white/5 pt-4 pb-8 px-4 gap-4">
+            {/* DIRECT SPATIAL SELECTOR (Replaces toggle) */}
+            <div className="flex bg-white/5 rounded-full p-1 border border-white/5">
+                {(['off', '8d', '16d', '32d'] as SpatialMode[]).map(mode => (
+                    <button
+                        key={mode}
+                        onClick={() => handleSpatialSelect(mode)}
+                        className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all uppercase ${
+                            spatialMode === mode 
+                            ? 'bg-[#22d3ee] text-black shadow-[0_0_10px_rgba(34,211,238,0.5)]' 
+                            : 'text-gray-400 hover:text-white'
+                        }`}
+                    >
+                        {mode === 'off' ? 'OFF' : mode}
+                    </button>
+                ))}
+            </div>
             
             <button onClick={onToggleQueue} className="flex flex-col items-center gap-1.5 text-gray-400 hover:text-white transition">
                <ListMusic size={22} />

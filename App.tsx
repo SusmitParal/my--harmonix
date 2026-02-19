@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, ReactNode } from 'react';
 import { 
   Home as HomeIcon, Search as SearchIcon, Heart, 
@@ -8,7 +9,7 @@ import { Song, Playlist, ViewState, SpatialMode, ShuffleMode, RepeatMode, UserPr
 import { DEMO_TRACK_URL, MOCK_PLAYLISTS, GENRES } from './constants';
 import { audioEngine } from './services/audioEngine';
 import { getHomeMixes, searchTracks, getDiscoverMix } from './services/musicApi';
-import { smartReorderQueue, generateVibeQuery } from './services/geminiService';
+import { smartReorderQueue, generateVibeQuery, getAIEqualizerSettings } from './services/geminiService';
 
 import { PlayerBar } from './components/PlayerBar';
 import { FullScreenPlayer } from './components/FullScreenPlayer';
@@ -20,7 +21,7 @@ import { SplashScreen } from './components/SplashScreen';
 import { Onboarding } from './components/Onboarding';
 
 // Bump version to force a cleanup of old corrupted localStorage data
-const APP_VERSION = '3.9.0';
+const APP_VERSION = '3.9.4';
 
 // --- Error Boundary Component ---
 interface ErrorBoundaryProps {
@@ -32,10 +33,7 @@ interface ErrorBoundaryState {
 }
 
 class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = { hasError: false };
-  }
+  state: ErrorBoundaryState = { hasError: false };
 
   static getDerivedStateFromError(error: any) {
     return { hasError: true };
@@ -91,6 +89,15 @@ function AppContent() {
           return 'off';
       }
   });
+
+  // AI Auto EQ State
+  const [aiAutoEq, setAiAutoEq] = useState<boolean>(() => {
+     try {
+         return localStorage.getItem('aiAutoEq') === 'true';
+     } catch {
+         return false;
+     }
+  });
   
   const [originalQueue, setOriginalQueue] = useState<Song[]>([]); // To restore order when shuffle off
 
@@ -127,6 +134,94 @@ function AppContent() {
   // Home Content
   const [homeMixes, setHomeMixes] = useState<{title: string, songs: Song[]}[]>([]);
   const sleepTimerRef = useRef<number | null>(null);
+
+  // BACK BUTTON LOGIC: State Ref to access fresh state in event listener
+  const stateRef = useRef({
+    view, isPlayerExpanded, playlistModalSong, selectedArtist, showQueue, isMenuOpen, playSelection, exitAttempt: false
+  });
+
+  // Sync Ref with State
+  useEffect(() => {
+    stateRef.current = { 
+        view, isPlayerExpanded, playlistModalSong, selectedArtist, showQueue, isMenuOpen, playSelection, 
+        exitAttempt: stateRef.current.exitAttempt // Preserve exit attempt state across renders
+    };
+  }, [view, isPlayerExpanded, playlistModalSong, selectedArtist, showQueue, isMenuOpen, playSelection]);
+
+  const showNotification = (msg: string) => {
+      setNotification(msg);
+      setTimeout(() => setNotification(null), 3000);
+  };
+
+  // --- BACK BUTTON HANDLER ---
+  useEffect(() => {
+    // Push initial trap state. Using null for URL defaults to current URL and avoids SecurityError in sandboxed/blob environments.
+    try {
+        window.history.pushState(null, '', null);
+    } catch (e) {
+        console.warn("History API restricted, back button handling may be limited.");
+    }
+
+    const onBack = (e: PopStateEvent) => {
+      const state = stateRef.current;
+      let handled = false;
+
+      // Close layers in priority order (Topmost Z-Index first)
+      if (state.playSelection) {
+          setPlaySelection(null);
+          handled = true;
+      } else if (state.isPlayerExpanded) {
+          setIsPlayerExpanded(false);
+          handled = true;
+      } else if (state.playlistModalSong) {
+          setPlaylistModalSong(null);
+          handled = true;
+      } else if (state.isMenuOpen) {
+          setIsMenuOpen(false);
+          handled = true;
+      } else if (state.selectedArtist) {
+          setSelectedArtist(null);
+          handled = true;
+      } else if (state.showQueue) {
+          setShowQueue(false);
+          handled = true;
+      } else if (state.view !== 'home') {
+          setView('home');
+          handled = true;
+      }
+
+      if (handled) {
+          // If we handled the back action internally, we restore the trap state
+          // so the next back press is also caught by the app.
+          try {
+            window.history.pushState(null, '', null);
+          } catch(e) {}
+      } else {
+          // User is at root (Home) with no modals.
+          if (state.exitAttempt) {
+              // Allow exit: Do nothing, let the browser pop the state and leave.
+              stateRef.current.exitAttempt = false; // Reset for next launch
+          } else {
+              // First Tap: Warn user
+              showNotification("Tap back again to exit");
+              stateRef.current.exitAttempt = true;
+              
+              // Restore trap for the potential second tap (which will be allowed to pass if <2s)
+              try {
+                window.history.pushState(null, '', null);
+              } catch(e) {}
+              
+              // Reset exit attempt after 2 seconds
+              setTimeout(() => {
+                  stateRef.current.exitAttempt = false;
+              }, 2000);
+          }
+      }
+    };
+
+    window.addEventListener('popstate', onBack);
+    return () => window.removeEventListener('popstate', onBack);
+  }, []);
 
   // --- VERSION CHECK & INITIALIZATION SEQUENCE ---
   
@@ -195,6 +290,26 @@ function AppContent() {
       return () => clearTimeout(safetyTimer);
   }, [showSplash]);
 
+  // AI AUTO-EQ LOGIC
+  useEffect(() => {
+     localStorage.setItem('aiAutoEq', aiAutoEq.toString());
+     
+     if (aiAutoEq && currentSong) {
+         // Debounce AI call slightly to prevent rapid spam if skipping fast
+         const timeout = setTimeout(async () => {
+             const gains = await getAIEqualizerSettings(currentSong.title, currentSong.artist);
+             if (aiAutoEq && currentSong) { // Check if still valid
+                 audioEngine.setEQGains(gains);
+                 // Only show notification if modal isn't open, otherwise it's annoying
+                 if (!isPlayerExpanded) {
+                    // showNotification("AI EQ: Optimized for " + currentSong.title); 
+                 }
+             }
+         }, 500);
+         return () => clearTimeout(timeout);
+     }
+  }, [aiAutoEq, currentSong]);
+
 
   // 3. Handle Splash Completion logic
   const handleSplashComplete = () => {
@@ -213,7 +328,7 @@ function AppContent() {
       localStorage.setItem('harmonix_user_profile', JSON.stringify(profile));
       setShowOnboarding(false);
       loadHomeMixes(profile);
-      showNotification(`Welcome to Harmonix, ${profile.name}!`);
+      showNotification(`Profile Updated!`);
   };
 
   const loadHomeMixes = async (profile: UserProfile | null) => {
@@ -319,11 +434,6 @@ function AppContent() {
         if(sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
     };
   }, [sleepTimer]);
-
-  const showNotification = (msg: string) => {
-      setNotification(msg);
-      setTimeout(() => setNotification(null), 3000);
-  };
 
   // Internal helper to play
   const playSongInternal = async (song: Song) => {
@@ -436,54 +546,78 @@ function AppContent() {
       showNotification(`Repeat: ${newMode === 'one' ? 'One Song' : newMode === 'all' ? 'All' : 'Off'}`);
   };
 
-  // --- INTELLIGENT AUTOPLAY LOGIC ---
+  // --- INFINITE AUTOPLAY LOGIC ---
   const handleNext = async () => {
+    // 1. Repeat One Check
     if (repeatMode === 'one' && currentSong) {
         audioEngine.seek(0);
         audioEngine.play();
         return;
     }
 
+    // 2. Play from Queue
     if (queue.length > 0) {
        const next = queue[0];
        setQueue(prev => prev.slice(1));
        playSong(next, true); 
-    } else {
-        if (repeatMode === 'all' && originalQueue.length > 0) {
-            const resetQueue = [...originalQueue];
-            const next = resetQueue[0];
-            setQueue(resetQueue.slice(1));
-            playSong(next, true); 
-            showNotification("Playlist restarting...");
-        } else if (currentSong) {
-             showNotification("Autoplay: Loading...");
-             try {
-                const preferredLangs = userProfile?.languages || ['Hindi', 'English'];
-                const vibeQuery = await generateVibeQuery(currentSong, preferredLangs);
-                let similarSongs = await searchTracks(vibeQuery);
-                similarSongs = similarSongs.filter(s => s.id !== currentSong.id && s.title !== currentSong.title);
-                
-                if (similarSongs.length === 0) {
-                     const query = `${currentSong.artist} similar`;
-                     similarSongs = await searchTracks(query);
-                     similarSongs = similarSongs.filter(s => s.id !== currentSong.id);
-                }
-                
-                if (similarSongs.length > 0) {
-                     const next = similarSongs[0];
-                     const rest = similarSongs.slice(1);
-                     setQueue(rest);
-                     playSong(next, true);
-                } else {
-                    audioEngine.seek(0);
-                    audioEngine.play(); 
-                    showNotification("Replaying current song");
-                }
-             } catch (e) {
-                 audioEngine.seek(0);
-                 audioEngine.play();
-             }
-        }
+       return;
+    } 
+    
+    // 3. Repeat All Check (Loop Playlist)
+    if (repeatMode === 'all' && originalQueue.length > 0) {
+        const resetQueue = [...originalQueue];
+        const next = resetQueue[0];
+        setQueue(resetQueue.slice(1));
+        playSong(next, true); 
+        showNotification("Playlist restarting...");
+        return;
+    } 
+    
+    // 4. INFINITE VIBE GENERATOR
+    // If we have no queue and no repeat, generate music. Music never stops.
+    if (currentSong) {
+         showNotification("Loading next vibe...");
+         
+         try {
+            // Attempt 1: Contextual AI Vibe
+            const preferredLangs = userProfile?.languages || ['Hindi', 'English'];
+            const vibeQuery = await generateVibeQuery(currentSong, preferredLangs);
+            let similarSongs = await searchTracks(vibeQuery);
+            
+            // Filter duplicates
+            similarSongs = similarSongs.filter(s => s.id !== currentSong.id && s.title !== currentSong.title);
+            
+            // Attempt 2: Fallback to Artist Mix if AI Vibe is empty
+            if (similarSongs.length === 0) {
+                 const query = `${currentSong.artist} mix`;
+                 similarSongs = await searchTracks(query);
+                 similarSongs = similarSongs.filter(s => s.id !== currentSong.id);
+            }
+            
+            // Attempt 3: Fallback to General Trending if Artist mix is empty
+            if (similarSongs.length === 0) {
+                 const query = `Trending ${preferredLangs[0] || 'Hits'}`;
+                 similarSongs = await searchTracks(query);
+                 similarSongs = similarSongs.filter(s => s.id !== currentSong.id);
+            }
+
+            // Execute Play
+            if (similarSongs.length > 0) {
+                 const next = similarSongs[0];
+                 const rest = similarSongs.slice(1);
+                 setQueue(rest); // Fill the queue so next time it's instant
+                 playSong(next, true);
+            } else {
+                // Attempt 4: Ultimate Fail-safe -> Replay current
+                audioEngine.seek(0);
+                audioEngine.play(); 
+                showNotification("Replaying (No signal)");
+            }
+         } catch (e) {
+             // Network failure fail-safe
+             audioEngine.seek(0);
+             audioEngine.play();
+         }
     }
   };
 
@@ -611,7 +745,7 @@ function AppContent() {
   return (
     <>
     {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
-    {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
+    {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} initialData={userProfile} />}
     
     {/* PLAY SELECTION MODAL */}
     {playSelection && (
@@ -958,6 +1092,22 @@ function AppContent() {
                     
                     <div className={`${cardClass} p-4 rounded-xl flex justify-between items-center`}>
                         <div className="flex items-center gap-3">
+                            <User className="text-[#22d3ee]" />
+                            <div>
+                                <h3 className={`font-bold ${headerClass}`}>Edit Profile</h3>
+                                <p className={`text-xs ${textSecondary}`}>Update name, languages & artists</p>
+                            </div>
+                        </div>
+                        <button 
+                            onClick={() => setShowOnboarding(true)}
+                            className={`px-4 py-2 rounded-full text-xs font-bold ${theme === 'dark' ? 'bg-white text-black' : 'bg-black text-white'}`}
+                        >
+                            Edit
+                        </button>
+                    </div>
+
+                    <div className={`${cardClass} p-4 rounded-xl flex justify-between items-center`}>
+                        <div className="flex items-center gap-3">
                             {theme === 'dark' ? <Moon className="text-[#22d3ee]" /> : <Sun className="text-orange-400" />}
                             <div>
                                 <h3 className={`font-bold ${headerClass}`}>App Theme</h3>
@@ -975,13 +1125,17 @@ function AppContent() {
                     <div className={`${cardClass} p-4 rounded-xl`}>
                          <div className="mb-4">
                             <h3 className={`font-bold ${headerClass}`}>Default Spatial Audio</h3>
-                            <p className={`text-xs ${textSecondary}`}>Set your preferred immersive experience</p>
+                            <p className={`text-xs ${textSecondary}`}>Tap to set mode immediately</p>
                          </div>
                          <div className="flex gap-2">
                              {(['off', '8d', '16d', '32d'] as SpatialMode[]).map(mode => (
                                  <button 
                                     key={mode}
-                                    onClick={() => setDefaultSpatial(mode)}
+                                    onClick={() => {
+                                        setDefaultSpatial(mode);
+                                        audioEngine.setSpatialMode(mode); // IMMEDIATE APPLICATION
+                                        showNotification(`Spatial Mode: ${mode.toUpperCase()}`);
+                                    }}
                                     className={`flex-1 py-2 rounded-lg text-sm font-bold border transition-all ${defaultSpatial === mode ? 'bg-[#d946ef] text-white border-[#d946ef] shadow-[0_0_15px_#d946ef]' : `border-gray-600 ${textSecondary} hover:border-white hover:text-white`}`}
                                  >
                                      {mode.toUpperCase()}
@@ -1116,6 +1270,9 @@ function AppContent() {
              repeatMode={repeatMode}
              onToggleShuffle={toggleShuffle}
              onToggleRepeat={toggleRepeat}
+             
+             aiAutoEq={aiAutoEq}
+             onToggleAiAutoEq={() => setAiAutoEq(!aiAutoEq)}
           />
       )}
 
