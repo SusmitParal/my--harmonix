@@ -7,9 +7,9 @@ import {
 } from 'lucide-react';
 import { Song, Playlist, ViewState, SpatialMode, ShuffleMode, RepeatMode, UserProfile } from './types';
 import { DEMO_TRACK_URL, MOCK_PLAYLISTS, GENRES } from './constants';
-import { audioEngine } from './Services/audioEngine';
-import { getHomeMixes, searchTracks, getDiscoverMix } from './Services/musicApi';
-import { smartReorderQueue, generateVibeQuery, getAIEqualizerSettings } from './Services/geminiService';
+import { audioEngine } from './services/audioEngine';
+import { getHomeMixes, searchTracks, getDiscoverMix } from './services/musicApi';
+import { smartReorderQueue, generateVibeQuery, getAIEqualizerSettings } from './services/geminiService';
 
 import { PlayerBar } from './components/PlayerBar';
 import { FullScreenPlayer } from './components/FullScreenPlayer';
