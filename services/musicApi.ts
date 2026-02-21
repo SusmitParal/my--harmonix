@@ -155,12 +155,13 @@ export const getHomeMixes = async (userProfile?: UserProfile) => {
     };
 
     const categories = [
-        { title: "Trending India", query: "Top 50 India", lang: 'Hindi' },
+        { title: "Trending Now: India", query: "Top 50 India", lang: 'Hindi' },
+        { title: "Bollywood Gold", query: "90s Bollywood Hits", lang: 'Hindi' },
+        { title: "Arijit Singh Hits", query: "Arijit Singh", lang: 'Hindi' },
         { title: "Global Top 50", query: "Global Top 50", lang: 'English' },
-        { title: "French Pop Hits", query: "Top 50 French Songs", lang: 'French' },
-        { title: "Latino Gang", query: "Top 50 Spanish", lang: 'Spanish' },
         { title: "New Hindi Releases", query: "New Hindi Songs", lang: 'Hindi' },
-        { title: "Punjabi Swag", query: "Top 50 Punjabi", lang: 'Punjabi' }
+        { title: "Punjabi Party Hits", query: "Latest Punjabi Hits", lang: 'Punjabi' },
+        { title: "Requested For You", query: "Mitwa Kabhi Alvida Naa Kehna", lang: 'Hindi' },
     ];
 
     let finalCategories = [...categories];
@@ -210,7 +211,8 @@ export const searchTracks = async (query: string): Promise<Song[]> => {
 
 const DISCOVERY_QUERIES = [
     "Trending Reels 2024", "Viral Hits India", "Arijit Singh Latest", 
-    "Sidhu Moose Wala", "Diljit Dosanjh", "K-Pop Hot 100", "Drake Hits"
+    "Sidhu Moose Wala", "Diljit Dosanjh", "K-Pop Hot 100", "Drake Hits",
+    "Shreya Ghoshal Hits", "Badshah Party Songs", "Pritam Classics"
 ];
 
 export const getDiscoverMix = async (userProfile?: UserProfile) => {

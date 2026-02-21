@@ -371,7 +371,7 @@ class AudioEngine {
       if(!this.audioContext) return;
       gains.forEach((gain, index) => {
           if (this.eqNodes[index]) {
-              this.eqNodes[index].gain.setTargetAtTime(gain, this.audioContext.currentTime, 0.2);
+              this.eqNodes[index].gain.setTargetAtTime(gain, this.audioContext!.currentTime, 0.2);
           }
       });
   }
