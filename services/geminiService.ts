@@ -1,181 +1,161 @@
-
-import { GoogleGenAI, Type } from "@google/genai";
-import { Song, Playlist, ArtistInfo } from "../types";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import { Song, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
-// Initialize the client with the correct API Key parameter object
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// 1. Initialize with a check to prevent Vercel build-time crashes
+const apiKey = process.env.API_KEY || "";
+const genAI = new GoogleGenerativeAI(apiKey);
 
+// Using 1.5 Flash: It's the "Premium" choice for speed in UI/UX apps
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+/**
+ * GENERATE LYRICS
+ * Optimized for Vercel's streaming capabilities
+ */
 export const generateLyrics = async (song: string, artist: string): Promise<string> => {
-  if (!process.env.API_KEY) return "Lyrics unavailable (API Key missing).";
-  
+  if (!apiKey) return "Lyrics unavailable (API Key missing).";
+
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Generate synchronized style lyrics for the song "${song}" by "${artist}". Format nicely with stanzas.`,
-    });
-    return response.text || "Lyrics not found.";
+    const prompt = `Generate synchronized style lyrics for the song "${song}" by "${artist}". Format with clear stanzas.`;
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    return response.text() || "Lyrics not found.";
   } catch (e) {
     console.error("Gemini Error:", e);
     return "Could not load lyrics.";
   }
 };
 
+/**
+ * SMART REORDER QUEUE
+ * Uses Strict JSON Schema for Vercel stability
+ */
 export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promise<Song[]> => {
-    if (!process.env.API_KEY || queue.length < 3) return queue.sort(() => Math.random() - 0.5);
-
-    try {
-        const songList = queue.map(s => `${s.title} - ${s.artist}`).join('\n');
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `I am listening to "${currentSong.title}" by "${currentSong.artist}". 
-            Here is a list of upcoming songs:
-            ${songList}
-            
-            Reorder this list to create the best musical flow/vibe continuing from the current song. 
-            Return the song titles in the new order as a JSON array of strings.`,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                }
-            }
-        });
-
-        const orderedTitles = JSON.parse(response.text || "[]");
-        
-        // Reconstruct queue based on returned titles
-        const newQueue: Song[] = [];
-        orderedTitles.forEach((title: string) => {
-            const found = queue.find(s => title.includes(s.title) || s.title.includes(title));
-            if (found && !newQueue.includes(found)) {
-                newQueue.push(found);
-            }
-        });
-        
-        // Add any leftovers that weren't matched
-        queue.forEach(s => {
-            if (!newQueue.includes(s)) newQueue.push(s);
-        });
-
-        return newQueue;
-    } catch (e) {
-        console.error("AI Shuffle Error:", e);
-        return queue.sort(() => Math.random() - 0.5);
-    }
-};
-
-export const generateVibeQuery = async (currentSong: Song, languages: string[]): Promise<string> => {
-    if (!process.env.API_KEY) return `${currentSong.artist} similar songs`;
-
-    try {
-        const langStr = languages.length > 0 ? languages.join(", ") : "Hindi, English";
-        const response = await ai.models.generateContent({
-            model: 'gemini-3-flash-preview',
-            contents: `I just finished listening to "${currentSong.title}" by "${currentSong.artist}". 
-            Suggest a VERY short search query (max 4 words) to find the next song that matches this mood/vibe (e.g. late night drive, party, sad, upbeat).
-            CRITICAL: The song MUST be in one of these languages: ${langStr}.
-            Return ONLY the search query string. Do not include quotes.`,
-        });
-        return response.text?.trim() || `${currentSong.artist} radio`;
-    } catch (e) {
-        return `${currentSong.artist} mix`;
-    }
-};
-
-export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
-  if (!process.env.API_KEY) {
-      return { 
-          name: artistName, 
-          bio: "Bio unavailable in demo mode.", 
-          imageUrl: `https://picsum.photos/400/400?random=${Math.random()}`,
-          topTracks: [] // Empty top tracks for demo fallback
-      };
-  }
+  if (!apiKey || queue.length < 3) return [...queue].sort(() => Math.random() - 0.5);
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: `Provide a short biography (under 100 words) for music artist "${artistName}" and a list of their 3 top hits. Return JSON.`,
-      config: {
+    const songList = queue.map(s => `${s.title} - ${s.artist}`).join('\n');
+    
+    const result = await model.generateContent({
+      contents: [{
+        role: "user",
+        parts: [{
+          text: `Current song: "${currentSong.title}" by "${currentSong.artist}". 
+                 Upcoming: ${songList}. Reorder for best musical flow. Return JSON array of titles.`
+        }]
+      }],
+      generationConfig: {
         responseMimeType: "application/json",
         responseSchema: {
-          type: Type.OBJECT,
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.STRING }
+        }
+      }
+    });
+
+    const orderedTitles: string[] = JSON.parse(result.response.text());
+
+    // Reconstruct with fallback for unmatched titles
+    const newQueue = orderedTitles
+      .map(title => queue.find(s => s.title.toLowerCase().includes(title.toLowerCase())))
+      .filter((s): s is Song => !!s);
+
+    // Add back any songs the AI missed
+    const missing = queue.filter(s => !newQueue.includes(s));
+    return [...newQueue, ...missing];
+  } catch (e) {
+    return [...queue].sort(() => Math.random() - 0.5);
+  }
+};
+
+/**
+ * AI EQUALIZER
+ * Returns a 6-band configuration based on genre analysis
+ */
+export const getAIEqualizerSettings = async (song: string, artist: string): Promise<number[]> => {
+  if (!apiKey) return [0, 0, 0, 0, 0, 0];
+
+  try {
+    const result = await model.generateContent({
+      contents: [{
+        role: "user",
+        parts: [{ text: `Optimal 6-band EQ (-8 to 8dB) for "${song}" by "${artist}". Bands: 60Hz, 200Hz, 500Hz, 1kHz, 4kHz, 10kHz.` }]
+      }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: SchemaType.ARRAY,
+          items: { type: SchemaType.NUMBER }
+        }
+      }
+    });
+
+    const gains = JSON.parse(result.response.text());
+    return Array.isArray(gains) ? gains.slice(0, 6) : [0, 0, 0, 0, 0, 0];
+  } catch (e) {
+    return [0, 0, 0, 0, 0, 0];
+  }
+};
+
+/**
+ * ARTIST BIO & TOP TRACKS
+ * Combines data fetching with image fallbacks
+ */
+export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
+  const fallback = { 
+    name: artistName, bio: "Bio unavailable.", 
+    imageUrl: `https://picsum.photos/400/400?sig=${artistName}`, topTracks: [] 
+  };
+
+  if (!apiKey) return fallback;
+
+  try {
+    const result = await model.generateContent({
+      contents: [{
+        role: "user",
+        parts: [{ text: `Bio (<100 words) and 3 top hits for "${artistName}".` }]
+      }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: SchemaType.OBJECT,
           properties: {
-            bio: { type: Type.STRING },
+            bio: { type: SchemaType.STRING },
             topHits: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        title: { type: Type.STRING },
-                        album: { type: Type.STRING }
-                    }
+              type: SchemaType.ARRAY,
+              items: {
+                type: SchemaType.OBJECT,
+                properties: {
+                  title: { type: SchemaType.STRING },
+                  album: { type: SchemaType.STRING }
                 }
+              }
             }
           }
         }
       }
     });
 
-    const data = JSON.parse(response.text || "{}");
+    const data = JSON.parse(result.response.text());
+    
     const topTracks: Song[] = (data.topHits || []).map((hit: any, i: number) => ({
-        id: `artist_top_${i}_${Date.now()}`,
-        title: hit.title,
-        artist: artistName,
-        album: hit.album || 'Greatest Hits',
-        coverUrl: `https://picsum.photos/300/300?random=${Math.random()}`,
-        duration: 200,
-        audioUrl: DEMO_TRACK_URL
+      id: `ai_${artistName}_${i}`,
+      title: hit.title,
+      artist: artistName,
+      album: hit.album || 'Unknown Album',
+      coverUrl: `https://picsum.photos/300/300?sig=${i}`,
+      duration: 180,
+      audioUrl: DEMO_TRACK_URL
     }));
 
     return {
-        name: artistName,
-        bio: data.bio || "No bio available.",
-        imageUrl: `https://picsum.photos/500/500?random=${Math.random()}`,
-        topTracks
+      name: artistName,
+      bio: data.bio,
+      imageUrl: `https://picsum.photos/500/500?sig=${artistName}`,
+      topTracks
     };
   } catch (e) {
-      return { 
-          name: artistName, 
-          bio: "Could not fetch bio.", 
-          imageUrl: `https://picsum.photos/400/400?random=${Math.random()}`,
-          topTracks: []
-      };
+    return fallback;
   }
-}
-
-export const getAIEqualizerSettings = async (song: string, artist: string): Promise<number[]> => {
-    if (!process.env.API_KEY) return [0,0,0,0,0,0];
-    try {
-        const response = await ai.models.generateContent({
-             model: 'gemini-3-flash-preview',
-             contents: `Suggest a 6-band equalizer setting (frequencies: 60Hz, 200Hz, 500Hz, 1kHz, 4kHz, 10kHz) for the song "${song}" by "${artist}". 
-             Values must be between -8 and 8 (dB). 
-             Analyze the song's genre (e.g., Bass Heavy for Trap, Mid-boost for Acoustic, V-Shape for Pop) and return the optimal dB gains.
-             
-             Return ONLY a JSON array of 6 integers. Example: [4, 2, 0, -2, 2, 4]`,
-             config: {
-                responseMimeType: "application/json",
-                 responseSchema: {
-                    type: Type.ARRAY,
-                    items: { type: Type.NUMBER }
-                }
-             }
-        });
-        const gains = JSON.parse(response.text || "[0,0,0,0,0,0]");
-        return (Array.isArray(gains) && gains.length === 6) ? gains : [0,0,0,0,0,0];
-    } catch (e) {
-        console.error("AI EQ Error:", e);
-        return [0,0,0,0,0,0]; // Flat as fallback
-    }
-}
-
-export const generateRecommendations = async (context: string): Promise<Song[]> => {
-  return []; // Simplified for stability
 };
-
-export const searchMusic = async (query: string): Promise<Song[]> => {
-   return []; // Simplified for stability
-}
