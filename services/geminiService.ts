@@ -3,7 +3,8 @@ import { Song, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
 // 1. Vite/Vercel use import.meta.env instead of process.env
-const apiKey = import.meta.env.VITE_API_KEY || "";
+// @ts-ignore
+const apiKey = (import.meta as any).env.VITE_API_KEY || "";
 const genAI = new GoogleGenerativeAI(apiKey);
 
 // Using 1.5 Flash for the "Premium" Harmonix experience
