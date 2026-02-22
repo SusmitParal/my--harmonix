@@ -2,7 +2,8 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Song, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
-// 1. Vite/Vercel use import.meta.env instead of process.env
+// 1. Silent Fix: No .d.ts file needed anymore. 
+// Uses 'as any' to bypass strict Type checking for automatic deploys.
 // @ts-ignore
 const apiKey = (import.meta as any).env.VITE_API_KEY || "";
 const genAI = new GoogleGenerativeAI(apiKey);
@@ -27,7 +28,8 @@ export const generateLyrics = async (song: string, artist: string): Promise<stri
 };
 
 /**
- * GENERATE VIBE QUERY (The missing piece that broke your build!)
+ * GENERATE VIBE QUERY
+ * (Essential for the 'AI Vibe' feature)
  */
 export const generateVibeQuery = async (currentSong: Song, languages: string[]): Promise<string> => {
     if (!apiKey) return `${currentSong.artist} similar songs`;
@@ -38,7 +40,7 @@ export const generateVibeQuery = async (currentSong: Song, languages: string[]):
         Suggest a VERY short search query (max 4 words) to find the next song that matches this mood.
         CRITICAL: The song MUST be in one of these languages: ${langStr}.
         Return ONLY the search query string. Do not include quotes.`;
-        
+
         const result = await model.generateContent(prompt);
         return result.response.text()?.trim() || `${currentSong.artist} radio`;
     } catch (e) {
@@ -48,6 +50,7 @@ export const generateVibeQuery = async (currentSong: Song, languages: string[]):
 
 /**
  * SMART REORDER QUEUE
+ * Uses JSON schema to ensure the app doesn't crash on Vercel
  */
 export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promise<Song[]> => {
   if (!apiKey || queue.length < 3) return [...queue].sort(() => Math.random() - 0.5);
