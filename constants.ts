@@ -1,6 +1,7 @@
 import { Song, Playlist, FriendActivity } from './types';
 
 // A royalty-free track for demo purposes
+// NOTE: Ensure this URL remains active. If it fails, the player might stay at 0:00.
 export const DEMO_TRACK_URL = 'https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=lofi-study-112191.mp3';
 
 export const DEFAULT_EQ_PRESETS = {
@@ -40,8 +41,9 @@ export const MOCK_PLAYLISTS: Playlist[] = [
   }
 ];
 
+// Added 'Lofi' and 'Phonk' - essential for AI vibe generation
 export const GENRES = [
-  'Bollywood', 'Punjabi', 'K-Pop', 'J-Pop', 'Anime', 'Tamil', 'Telugu', 'Marathi', 'Gujarati', 'Bengali', 'Kannada', 'Malayalam', 'Bhojpuri', 'Indie India', 'Pop', 'Hip-Hop', 'Electronic', 'Rock', 'Classical', 'Ghazal', 'Devotional'
+  'Bollywood', 'Punjabi', 'K-Pop', 'J-Pop', 'Anime', 'Tamil', 'Telugu', 'Marathi', 'Gujarati', 'Bengali', 'Kannada', 'Malayalam', 'Bhojpuri', 'Indie India', 'Pop', 'Hip-Hop', 'Electronic', 'Rock', 'Classical', 'Ghazal', 'Devotional', 'Lofi', 'Phonk'
 ];
 
 export const LANGUAGES = [
