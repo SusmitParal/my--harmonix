@@ -1,119 +1,87 @@
-
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#0f0518" />
-    
-    <!-- PWA / Mobile Capable Tags -->
-    <link rel="manifest" href="/manifest.json" />
+
+    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/3659/3659784.png" />
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3659/3659784.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Harmonix" />
-    <!-- Icon -->
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3659/3659784.png" />
-    <link rel="icon" href="https://cdn-icons-png.flaticon.com/512/3659/3659784.png" />
-    
+
     <title>Harmonix</title>
-    <!-- Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
     <style>
+      /* Your Premium Styles */
       body {
         font-family: 'Inter', sans-serif;
-        background-color: #0f0518; /* Deep Velvet Background */
+        background-color: #0f0518;
         color: #fff;
-        overflow: hidden; /* Prevent body scroll, handle in app */
+        margin: 0;
+        overflow: hidden;
         -webkit-tap-highlight-color: transparent;
-        user-select: none; /* App-like feel */
+        user-select: none;
       }
-      /* Custom Scrollbar */
-      ::-webkit-scrollbar {
-        width: 4px;
-      }
-      ::-webkit-scrollbar-track {
-        background: transparent;
-      }
+
+      /* Custom Neon Scrollbar */
+      ::-webkit-scrollbar { width: 4px; }
+      ::-webkit-scrollbar-track { background: transparent; }
       ::-webkit-scrollbar-thumb {
-        background: #d946ef; /* Neon Fuchsia */
+        background: #d946ef;
         border-radius: 4px;
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #22d3ee; /* Neon Cyan */
-      }
+      ::-webkit-scrollbar-thumb:hover { background: #22d3ee; }
+
+      /* Visualizer Layer */
       .visualizer-canvas {
         position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
+        top: 0; left: 0; width: 100%; height: 100%;
         pointer-events: none;
         z-index: 0;
         opacity: 0.6;
         mix-blend-mode: screen;
       }
-      /* Rescue Button Styles */
+
+      /* Rescue Button */
       #rescue-btn {
         display: none;
         position: fixed;
-        bottom: 20px;
-        left: 50%;
+        bottom: 20px; left: 50%;
         transform: translateX(-50%);
         padding: 12px 24px;
         background: #ef4444;
         color: white;
         border-radius: 99px;
         font-weight: bold;
-        z-index: 99999;
-        box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+        z-index: 9999;
         border: 2px solid white;
         cursor: pointer;
       }
     </style>
-<script type="importmap">
-{
-  "imports": {
-    "react/": "https://esm.sh/react@^19.2.4/",
-    "react": "https://esm.sh/react@^19.2.4",
-    "@google/genai": "https://esm.sh/@google/genai@^1.41.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.574.0",
-    "react-dom/": "https://esm.sh/react-dom@^19.2.4/",
-    "vite": "https://esm.sh/vite@^7.3.1",
-    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.4"
-  }
-}
-</script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
-    <button id="rescue-btn" onclick="localStorage.clear(); window.location.reload()">Reset App Data</button>
     
-    <script>
-      // Global Error Handler for startup crashes
-      window.onerror = function(msg, url, line, col, error) {
-        // If we detect a major syntax or script error on load, force a clean reload once
-        if (!sessionStorage.getItem('rescue_attempted')) {
-             console.error("Critical startup error detected. Attempting rescue.");
-             sessionStorage.setItem('rescue_attempted', 'true');
-             localStorage.clear();
-             window.location.reload();
-        }
-      };
+    <canvas id="visualizer" class="visualizer-canvas"></canvas>
 
-      // Rescue Script: If app doesn't load in 4 seconds, show Reset button
+    <button id="rescue-btn" onclick="localStorage.clear(); window.location.reload()">
+      App Stuck? Tap to Reset
+    </button>
+
+    <script type="module" src="/src/index.tsx"></script>
+
+    <script>
+      // Rescue logic: show button if React fails to mount within 4 seconds
       setTimeout(() => {
         const root = document.getElementById('root');
         if (!root || root.innerHTML.trim() === '') {
-          console.warn("App hung on startup. Showing rescue button.");
           const btn = document.getElementById('rescue-btn');
-          if (btn) {
-            btn.style.display = 'block';
-            btn.innerText = "App Stuck? Tap to Reset";
-          }
+          if (btn) btn.style.display = 'block';
         }
       }, 4000);
     </script>
-    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
