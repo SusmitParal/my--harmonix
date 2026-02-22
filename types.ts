@@ -1,4 +1,3 @@
-
 export type SpatialMode = 'off' | '8d' | '16d' | '32d';
 export type ShuffleMode = 'off' | 'normal' | 'ai';
 export type RepeatMode = 'off' | 'all' | 'one';
@@ -13,14 +12,14 @@ export interface UserProfile {
 }
 
 export interface Song {
-  id: string;
+  id: string; // Ensure this is always unique (e.g., ai-song-1)
   title: string;
   artist: string;
   album: string;
   coverUrl: string;
-  duration: number; // in seconds
-  audioUrl?: string; // Full length audio URL
-  previewUrl?: string; // Keeping for compatibility
+  duration: number; 
+  audioUrl?: string; 
+  previewUrl?: string; 
   isLocal?: boolean;
   quality?: string;
 }
@@ -40,11 +39,21 @@ export interface ArtistInfo {
   topTracks: Song[];
 }
 
-export type ViewState = 'home' | 'search' | 'liked-songs' | 'profile' | 'library' | 'lyrics' | 'settings' | 'play-together' | 'downloads';
+// Added 'ai-chat' or 'player' if your App.tsx uses those views
+export type ViewState = 
+  | 'home' 
+  | 'search' 
+  | 'liked-songs' 
+  | 'profile' 
+  | 'library' 
+  | 'lyrics' 
+  | 'settings' 
+  | 'play-together' 
+  | 'downloads';
 
 export interface EQBand {
   frequency: number;
-  gain: number; // -12 to 12
+  gain: number; // Values: -12 to 12
   type: 'lowshelf' | 'peaking' | 'highshelf';
 }
 
