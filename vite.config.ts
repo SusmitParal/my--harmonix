@@ -1,20 +1,24 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-export default defineConfig(({ mode }) => {
-  // Load env file based on `mode` in the current working directory.
-  // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
-  const env = loadEnv(mode, (process as any).cwd(), '');
-
-  return {
-    plugins: [react()],
-    // This defines process.env.API_KEY as a global constant in the browser bundle
-    define: {
-      'process.env.API_KEY': JSON.stringify(env.API_KEY)
+// For Vite, we don't need to manually loadEnv for basic VITE_ variables
+// as they are automatically injected into import.meta.env
+export default defineConfig({
+  plugins: [react()],
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    // Ensure Rollup knows exactly where to start
+    rollupOptions: {
+      input: {
+        main: './index.html',
+      },
     },
-    build: {
-      outDir: 'dist',
-      sourcemap: false
-    }
-  };
+  },
+  // This replaces the complex 'define' block. 
+  // It allows code using 'process.env' to not crash, 
+  // though you should use import.meta.env instead.
+  define: {
+    'process.env': {},
+  },
 });
