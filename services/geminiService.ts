@@ -2,16 +2,15 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Song, ArtistInfo } from "../types";
 import { DEMO_TRACK_URL } from "../constants";
 
-// 1. Initialize with a check to prevent Vercel build-time crashes
-const apiKey = process.env.API_KEY || "";
+// 1. Vite/Vercel use import.meta.env instead of process.env
+const apiKey = import.meta.env.VITE_API_KEY || "";
 const genAI = new GoogleGenerativeAI(apiKey);
 
-// Using 1.5 Flash: It's the "Premium" choice for speed in UI/UX apps
+// Using 1.5 Flash for the "Premium" Harmonix experience
 const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 /**
  * GENERATE LYRICS
- * Optimized for Vercel's streaming capabilities
  */
 export const generateLyrics = async (song: string, artist: string): Promise<string> => {
   if (!apiKey) return "Lyrics unavailable (API Key missing).";
@@ -19,8 +18,7 @@ export const generateLyrics = async (song: string, artist: string): Promise<stri
   try {
     const prompt = `Generate synchronized style lyrics for the song "${song}" by "${artist}". Format with clear stanzas.`;
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    return response.text() || "Lyrics not found.";
+    return result.response.text() || "Lyrics not found.";
   } catch (e) {
     console.error("Gemini Error:", e);
     return "Could not load lyrics.";
@@ -28,15 +26,34 @@ export const generateLyrics = async (song: string, artist: string): Promise<stri
 };
 
 /**
+ * GENERATE VIBE QUERY (The missing piece that broke your build!)
+ */
+export const generateVibeQuery = async (currentSong: Song, languages: string[]): Promise<string> => {
+    if (!apiKey) return `${currentSong.artist} similar songs`;
+
+    try {
+        const langStr = languages.length > 0 ? languages.join(", ") : "Hindi, English";
+        const prompt = `I just finished listening to "${currentSong.title}" by "${currentSong.artist}". 
+        Suggest a VERY short search query (max 4 words) to find the next song that matches this mood.
+        CRITICAL: The song MUST be in one of these languages: ${langStr}.
+        Return ONLY the search query string. Do not include quotes.`;
+        
+        const result = await model.generateContent(prompt);
+        return result.response.text()?.trim() || `${currentSong.artist} radio`;
+    } catch (e) {
+        return `${currentSong.artist} mix`;
+    }
+};
+
+/**
  * SMART REORDER QUEUE
- * Uses Strict JSON Schema for Vercel stability
  */
 export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promise<Song[]> => {
   if (!apiKey || queue.length < 3) return [...queue].sort(() => Math.random() - 0.5);
 
   try {
     const songList = queue.map(s => `${s.title} - ${s.artist}`).join('\n');
-    
+
     const result = await model.generateContent({
       contents: [{
         role: "user",
@@ -56,12 +73,10 @@ export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promi
 
     const orderedTitles: string[] = JSON.parse(result.response.text());
 
-    // Reconstruct with fallback for unmatched titles
     const newQueue = orderedTitles
       .map(title => queue.find(s => s.title.toLowerCase().includes(title.toLowerCase())))
       .filter((s): s is Song => !!s);
 
-    // Add back any songs the AI missed
     const missing = queue.filter(s => !newQueue.includes(s));
     return [...newQueue, ...missing];
   } catch (e) {
@@ -71,7 +86,6 @@ export const smartReorderQueue = async (currentSong: Song, queue: Song[]): Promi
 
 /**
  * AI EQUALIZER
- * Returns a 6-band configuration based on genre analysis
  */
 export const getAIEqualizerSettings = async (song: string, artist: string): Promise<number[]> => {
   if (!apiKey) return [0, 0, 0, 0, 0, 0];
@@ -100,7 +114,6 @@ export const getAIEqualizerSettings = async (song: string, artist: string): Prom
 
 /**
  * ARTIST BIO & TOP TRACKS
- * Combines data fetching with image fallbacks
  */
 export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
   const fallback = { 
@@ -138,7 +151,7 @@ export const getArtistBio = async (artistName: string): Promise<ArtistInfo> => {
     });
 
     const data = JSON.parse(result.response.text());
-    
+
     const topTracks: Song[] = (data.topHits || []).map((hit: any, i: number) => ({
       id: `ai_${artistName}_${i}`,
       title: hit.title,
